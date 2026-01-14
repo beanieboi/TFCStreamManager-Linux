@@ -117,6 +117,7 @@ impl MainWindow {
         Self::connect_mode_buttons(
             &mode_buttons,
             &content_stack,
+            &kickertool.refresh_button,
             overlay_state.clone(),
             Arc::clone(&runtime),
         );
@@ -351,16 +352,20 @@ impl MainWindow {
     fn connect_mode_buttons(
         mode_buttons: &ModeButtons,
         content_stack: &Stack,
+        refresh_button: &Button,
         overlay_state: OverlayStateManager,
         runtime: Arc<Runtime>,
     ) {
         let stack_clone = content_stack.clone();
         let overlay_state_clone = overlay_state.clone();
+        let refresh_btn = refresh_button.clone();
         let rt = Arc::clone(&runtime);
         mode_buttons.kickertool.connect_toggled(move |btn| {
             if btn.is_active() {
                 stack_clone.set_visible_child_name("kickertool");
                 Self::spawn_set_mode(&rt, overlay_state_clone.clone(), OverlayMode::Kickertool);
+                // Automatically load tournaments when switching to Kickertool mode
+                refresh_btn.emit_clicked();
             }
         });
 
