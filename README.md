@@ -2,7 +2,7 @@
 
 A Linux desktop application for managing streaming overlays for table football (foosball) tournaments. Integrates with the [Kickertool](https://tournament.io) tournament management system to provide real-time match data for streaming platforms like OBS.
 
-> **Looking for Windows?** Check out the [Windows version](https://github.com/beanieboi/TFCStreamManager) built with C#/WPF.
+> **Looking for Windows?** Check out the [Windows version](https://github.com/beanieboi/TFCStreamManager-Windows) built with C#/WPF.
 
 ## Features
 
