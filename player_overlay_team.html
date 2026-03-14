@@ -3,7 +3,6 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="refresh" content="{{refreshInterval}}">
     <title></title>
     <style>
         body {
@@ -97,6 +96,19 @@
             <div class="stats">{{scoreB}}</div>
         </div>
     </div>
+    <script>
+        setInterval(async () => {
+            try {
+                const resp = await fetch(location.href);
+                const html = await resp.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const newContent = doc.querySelector('.overlay-container');
+                if (newContent) {
+                    document.querySelector('.overlay-container').innerHTML = newContent.innerHTML;
+                }
+            } catch (e) {}
+        }, {{refreshInterval}} * 1000);
+    </script>
 </body>
 
 </html>
