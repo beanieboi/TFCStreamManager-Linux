@@ -8,7 +8,6 @@ description = "Linux desktop application for managing streaming overlays for tab
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.8"
-base64 = "0.22.1"
 chrono = { version = "0.4.44", features = ["serde"] }
 directories = "6.0.0"
 glib = "0.22.2"

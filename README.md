@@ -59,7 +59,6 @@ Send POST requests to `/scores` with JSON:
 
 Settings are stored in `~/.config/TFCStreamManager/`:
 - `settings.json` - Application settings (port, refresh interval, etc.)
-- `.secrets` - Encrypted API key fallback (only used if system keyring unavailable)
 
 ### Custom Overlay Templates
 

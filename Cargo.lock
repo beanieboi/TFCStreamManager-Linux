@@ -1951,7 +1951,6 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64",
  "chrono",
  "directories",
  "glib",
