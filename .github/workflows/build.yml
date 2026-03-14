@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libssl-dev pkg-config libdbus-1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package binary with overlay templates
+        run: |
+          mkdir -p dist
+          cp target/release/tfc_stream_manager dist/
+          cp player_overlay.html dist/
+          cp player_overlay_team.html dist/
+          cd dist && tar czf ../tfc_stream_manager-linux-x86_64.tar.gz *
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.sha }}
+          name: Build ${{ github.sha }}
+          body: "Automated build from commit ${{ github.sha }}"
+          files: tfc_stream_manager-linux-x86_64.tar.gz
