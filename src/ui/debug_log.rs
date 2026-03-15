@@ -23,7 +23,8 @@ impl DebugLog {
             let history = Arc::clone(&history);
             let pending = Arc::clone(&pending);
             Arc::new(move |sender: String, msg: String| {
-                let line = format!("[{}] {}", sender, msg);
+                let timestamp = chrono::Local::now().format("%H:%M:%S");
+                let line = format!("[{}] [{}] {}", timestamp, sender, msg);
                 if let Ok(mut history) = history.lock() {
                     history.push(line.clone());
                 }

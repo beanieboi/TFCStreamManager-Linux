@@ -1,8 +1,10 @@
 use anyhow::Result;
 use axum::{
     Json, Router,
+    body::Body,
     extract::State,
     http::StatusCode,
+    middleware::{self, Next},
     response::{Html, IntoResponse},
     routing::{get, post},
 };
@@ -66,6 +68,10 @@ impl WebServer {
         let app = Router::new()
             .route("/", get(serve_overlay))
             .route("/scores", post(handle_scores))
+            .layer(middleware::from_fn_with_state(
+                Arc::clone(&state),
+                log_requests,
+            ))
             .layer(CorsLayer::permissive())
             .with_state(state);
 
@@ -114,6 +120,25 @@ impl WebServer {
             let _ = tx.send(());
         }
     }
+}
+
+async fn log_requests(
+    State(state): State<Arc<AppState>>,
+    req: axum::http::Request<Body>,
+    next: Next,
+) -> impl IntoResponse {
+    log(
+        &state.log_callback,
+        "WebServer",
+        format!("{} {} from {:?}", req.method(), req.uri(), req.headers().get("host").map(|v| v.to_str().unwrap_or("?"))),
+    );
+    let response = next.run(req).await;
+    log(
+        &state.log_callback,
+        "WebServer",
+        format!("Response: {}", response.status()),
+    );
+    response
 }
 
 async fn serve_overlay(State(state): State<Arc<AppState>>) -> impl IntoResponse {
