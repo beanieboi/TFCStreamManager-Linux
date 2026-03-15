@@ -1,19 +1,21 @@
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, ScrolledWindow, TextBuffer, TextView};
+use gtk4::{ApplicationWindow, ScrolledWindow, TextBuffer, TextView, Window};
 
 pub struct DebugWindow {
-    window: ApplicationWindow,
+    window: Window,
     text_buffer: TextBuffer,
 }
 
 impl DebugWindow {
     pub fn new(parent: &ApplicationWindow) -> Self {
-        let window = ApplicationWindow::builder()
+        let window = Window::builder()
             .title("Debug Log")
             .default_width(600)
             .default_height(400)
-            .transient_for(parent)
+            .destroy_with_parent(true)
             .build();
+
+        window.set_display(&WidgetExt::display(parent));
 
         let text_view = TextView::builder().editable(false).monospace(true).build();
 
@@ -26,6 +28,11 @@ impl DebugWindow {
             .build();
 
         window.set_child(Some(&scrolled));
+
+        window.connect_close_request(|win| {
+            win.set_visible(false);
+            glib::Propagation::Stop
+        });
 
         Self {
             window,
