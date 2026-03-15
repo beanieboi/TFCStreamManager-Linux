@@ -170,3 +170,62 @@ impl Default for SettingsService {
         Self::new().expect("Failed to create settings service")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_settings() {
+        let s = Settings::default();
+        assert_eq!(s.port, 8080);
+        assert_eq!(s.refresh_interval, 30);
+        assert!(s.overlay_path.is_none());
+        assert!(s.show_sets);
+        assert!(s.show_score);
+    }
+
+    #[test]
+    fn deserialize_full() {
+        let json = r#"{
+            "port": 9090,
+            "refresh_interval": 15,
+            "overlay_path": "/tmp/overlay.html",
+            "show_sets": false,
+            "show_score": true
+        }"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.port, 9090);
+        assert_eq!(s.refresh_interval, 15);
+        assert_eq!(s.overlay_path, Some("/tmp/overlay.html".into()));
+        assert!(!s.show_sets);
+        assert!(s.show_score);
+    }
+
+    #[test]
+    fn deserialize_empty_uses_defaults() {
+        let json = r#"{}"#;
+        let s: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(s.port, 8080);
+        assert_eq!(s.refresh_interval, 30);
+        assert!(s.show_sets);
+        assert!(s.show_score);
+    }
+
+    #[test]
+    fn serialize_roundtrip() {
+        let s = Settings {
+            port: 3000,
+            refresh_interval: 5,
+            overlay_path: Some("/custom.html".into()),
+            show_sets: false,
+            show_score: false,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let s2: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(s2.port, 3000);
+        assert_eq!(s2.refresh_interval, 5);
+        assert!(!s2.show_sets);
+        assert!(!s2.show_score);
+    }
+}

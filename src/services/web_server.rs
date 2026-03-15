@@ -130,7 +130,12 @@ async fn log_requests(
     log(
         &state.log_callback,
         "WebServer",
-        format!("{} {} from {:?}", req.method(), req.uri(), req.headers().get("host").map(|v| v.to_str().unwrap_or("?"))),
+        format!(
+            "{} {} from {:?}",
+            req.method(),
+            req.uri(),
+            req.headers().get("host").map(|v| v.to_str().unwrap_or("?"))
+        ),
     );
     let response = next.run(req).await;
     log(
@@ -231,4 +236,66 @@ fn render_template(template: &str, content: &OverlayContent, refresh_interval: u
         .replace("{{disciplineName}}", &content.discipline_name)
         .replace("{{setsName}}", &content.sets_name)
         .replace("{{refreshInterval}}", &refresh_interval.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Table;
+
+    fn sample_content() -> OverlayContent {
+        OverlayContent {
+            table: Table {
+                name: "Table 1".into(),
+                ..Default::default()
+            },
+            tournament_name: "Summer Cup".into(),
+            team_a: "Alpha".into(),
+            team_b: "Beta".into(),
+            score_name: "G".into(),
+            score_a: "5".into(),
+            score_b: "3".into(),
+            sets_name: "S".into(),
+            sets_a: "2".into(),
+            sets_b: "1".into(),
+            state: "running".into(),
+            start_time: "14:30:00".into(),
+            round_name: "Final".into(),
+            group_name: "Group A".into(),
+            discipline_name: "Singles".into(),
+            team_a_player: "Alice".into(),
+            team_b_player: "Bob".into(),
+        }
+    }
+
+    #[test]
+    fn render_replaces_all_placeholders() {
+        let template = "<div>{{table}} {{tournamentName}} {{teamA}} vs {{teamB}} \
+            {{scoreName}} {{scoreA}}:{{scoreB}} {{setsName}} {{setsA}}:{{setsB}} \
+            {{started}} {{state}} {{roundName}} {{groupName}} {{disciplineName}} \
+            {{teamAPlayer}} {{teamBPlayer}} {{refreshInterval}}</div>";
+        let result = render_template(template, &sample_content(), 30);
+        assert_eq!(
+            result,
+            "<div>Table 1 Summer Cup Alpha vs Beta \
+            G 5:3 S 2:1 \
+            14:30:00 running Final Group A Singles \
+            Alice Bob 30</div>"
+        );
+    }
+
+    #[test]
+    fn render_no_placeholders_unchanged() {
+        let template = "<h1>Hello World</h1>";
+        let result = render_template(template, &sample_content(), 10);
+        assert_eq!(result, "<h1>Hello World</h1>");
+    }
+
+    #[test]
+    fn render_empty_content() {
+        let content = OverlayContent::empty();
+        let template = "{{teamA}} vs {{teamB}}";
+        let result = render_template(template, &content, 30);
+        assert_eq!(result, "- vs -");
+    }
 }
