@@ -83,7 +83,7 @@ impl ServiceDiscovery {
         );
 
         let service_type = "_http._tcp.local.";
-        let instance_name = "TFCStream";
+        let instance_name = "TFCStreamServer";
 
         let mut ips = Vec::new();
         if let Ok(ifaces) = get_if_addrs() {
