@@ -14,8 +14,8 @@ use tokio::sync::RwLock;
 use super::DebugLog;
 use crate::models::{Table, Tournament};
 use crate::services::{
-    KickertoolApiService, LogCallback, OverlayStateManager, ServiceDiscovery, Settings,
-    SettingsService, TableMonitor, WebServer,
+    KickertoolApiService, LogCallback, ObsService, OverlayStateManager, ServiceDiscovery,
+    Settings, SettingsService, TableMonitor, WebServer,
 };
 
 pub(super) struct HeaderControls {
@@ -24,6 +24,9 @@ pub(super) struct HeaderControls {
     server_url_label: gtk4::Label,
     settings_button: gtk4::Button,
     debug_button: gtk4::Button,
+    obs_connect_button: gtk4::Button,
+    obs_pause_button: gtk4::Button,
+    obs_status_label: gtk4::Label,
 }
 
 pub(super) struct ModeButtons {
@@ -148,6 +151,14 @@ impl MainWindow {
         Self::connect_manual_update(
             &manual_controls,
             overlay_state.clone(),
+            Arc::clone(&runtime),
+        );
+        let obs_service = Arc::new(ObsService::new(Arc::clone(&log_callback)));
+        Self::connect_obs_buttons(
+            &header,
+            Arc::clone(&obs_service),
+            Arc::clone(&settings_service),
+            Arc::clone(&settings),
             Arc::clone(&runtime),
         );
         Self::connect_settings_dialog(

@@ -16,8 +16,8 @@ use super::{
 };
 use crate::models::{Table, Tournament};
 use crate::services::{
-    ApiError, KickertoolApiService, LogCallback, OverlayMode, OverlayStateManager, Settings,
-    SettingsService, TableMonitor, log,
+    ApiError, KickertoolApiService, LogCallback, ObsConnectionState, ObsService, OverlayMode,
+    OverlayStateManager, Settings, SettingsService, TableMonitor, log,
 };
 use crate::ui::{DebugLog, SettingsDialog};
 
@@ -126,7 +126,7 @@ impl MainWindow {
             let rt = Arc::clone(&runtime);
 
             dialog.run(move |result| {
-                if let Some((new_settings, api_key)) = result {
+                if let Some((new_settings, api_key, obs_password)) = result {
                     if let Err(e) = settings_service.save(&new_settings) {
                         log(
                             &log_callback,
@@ -143,6 +143,13 @@ impl MainWindow {
                     } else {
                         log(&log_callback, "Settings", "API key saved successfully");
                     }
+                    if let Err(e) = settings_service.save_obs_password(&obs_password) {
+                        log(
+                            &log_callback,
+                            "Settings",
+                            format!("Failed to save OBS password: {}", e),
+                        );
+                    }
 
                     let settings_arc = Arc::clone(&settings_arc);
                     let api = Arc::clone(&api);
@@ -152,6 +159,87 @@ impl MainWindow {
                         api.update_api_key(api_key).await;
                     });
                 }
+            });
+        });
+    }
+
+    pub(super) fn connect_obs_buttons(
+        header: &HeaderControls,
+        obs_service: Arc<ObsService>,
+        settings_service: Arc<SettingsService>,
+        settings: Arc<RwLock<Settings>>,
+        runtime: Arc<Runtime>,
+    ) {
+        let obs = Arc::clone(&obs_service);
+        let ss = Arc::clone(&settings_service);
+        let s = Arc::clone(&settings);
+        let rt = Arc::clone(&runtime);
+        let connect_btn = header.obs_connect_button.clone();
+        let pause_btn = header.obs_pause_button.clone();
+        let status_label = header.obs_status_label.clone();
+        header.obs_connect_button.connect_clicked(move |_| {
+            let obs = Arc::clone(&obs);
+            let ss = Arc::clone(&ss);
+            let s = Arc::clone(&s);
+            let connect_btn = connect_btn.clone();
+            let pause_btn = pause_btn.clone();
+            let status_label = status_label.clone();
+
+            let is_connected = rt.block_on({
+                let obs = Arc::clone(&obs);
+                async move { matches!(obs.get_state().await, ObsConnectionState::Connected) }
+            });
+
+            if is_connected {
+                rt.spawn(async move {
+                    obs.disconnect().await;
+                });
+                connect_btn.set_label("Connect OBS");
+                pause_btn.set_sensitive(false);
+                status_label.set_text("OBS: Not connected");
+                return;
+            }
+
+            let password = ss.load_obs_password().unwrap_or_default();
+            connect_btn.set_sensitive(false);
+            status_label.set_text("OBS: Connecting...");
+
+            Self::run_async_into_ui(
+                &rt,
+                async move {
+                    let port = s.read().await.obs_port;
+                    obs.connect(port, password).await;
+                    obs.get_state().await
+                },
+                move |state| {
+                    connect_btn.set_sensitive(true);
+                    match state {
+                        ObsConnectionState::Connected => {
+                            status_label.set_text("OBS: Connected");
+                            connect_btn.set_label("Disconnect OBS");
+                            pause_btn.set_sensitive(true);
+                        }
+                        ObsConnectionState::Error(msg) => {
+                            status_label.set_text(&format!("OBS: {msg}"));
+                            connect_btn.set_label("Connect OBS");
+                            pause_btn.set_sensitive(false);
+                        }
+                        _ => {
+                            status_label.set_text("OBS: Not connected");
+                            connect_btn.set_label("Connect OBS");
+                            pause_btn.set_sensitive(false);
+                        }
+                    }
+                },
+            );
+        });
+
+        let obs = Arc::clone(&obs_service);
+        let rt = Arc::clone(&runtime);
+        header.obs_pause_button.connect_clicked(move |_| {
+            let obs = Arc::clone(&obs);
+            rt.spawn(async move {
+                obs.switch_scene("Pause".to_string()).await;
             });
         });
     }

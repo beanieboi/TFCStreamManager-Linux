@@ -9,6 +9,7 @@ const REMOTE_HELP_TEXT: &str = "Remote mode active.\n\nSend POST requests to /sc
 
 impl MainWindow {
     pub(super) fn build_header() -> (GtkBox, HeaderControls) {
+        let outer_box = GtkBox::new(Orientation::Vertical, 4);
         let header_box = GtkBox::new(Orientation::Horizontal, 8);
 
         let start_button = Button::with_label("Start Server");
@@ -28,14 +29,32 @@ impl MainWindow {
         header_box.append(&settings_button);
         header_box.append(&debug_button);
 
+        let obs_box = GtkBox::new(Orientation::Horizontal, 8);
+        let obs_connect_button = Button::with_label("Connect OBS");
+        let obs_pause_button = Button::with_label("Pause Scene");
+        obs_pause_button.set_sensitive(false);
+        let obs_status_label = Label::new(Some("OBS: Not connected"));
+        obs_status_label.set_hexpand(true);
+        obs_status_label.set_xalign(0.0);
+
+        obs_box.append(&obs_connect_button);
+        obs_box.append(&obs_pause_button);
+        obs_box.append(&obs_status_label);
+
+        outer_box.append(&header_box);
+        outer_box.append(&obs_box);
+
         (
-            header_box,
+            outer_box,
             HeaderControls {
                 start_button,
                 stop_button,
                 server_url_label,
                 settings_button,
                 debug_button,
+                obs_connect_button,
+                obs_pause_button,
+                obs_status_label,
             },
         )
     }
