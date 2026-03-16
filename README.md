@@ -13,7 +13,7 @@ A Linux desktop application for managing streaming overlays for table football (
 
 - **Web Server** - Serves customizable HTML overlays (default port 8080)
 - **mDNS/Bonjour Discovery** - Automatically advertises the service on your local network as "TFCStream"
-- **Secure API Key Storage** - Uses the system keyring (Secret Service) with encrypted file fallback
+- **Secure API Key Storage** - Uses the system keyring (Secret Service)
 - **Customizable Templates** - HTML templates with placeholder substitution for full overlay control
 - **Debug Logging** - Built-in debug window for troubleshooting
 
@@ -58,14 +58,29 @@ Send POST requests to `/scores` with JSON:
 ## Configuration
 
 Settings are stored in `~/.config/TFCStreamManager/`:
-- `settings.json` - Application settings (port, refresh interval, etc.)
+- `settings.json` - Application settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `port` | `8080` | Web server port (1024–65535) |
+| `refresh_interval` | `30` | Kickertool polling interval in seconds (1–300) |
+| `overlay_path` | `null` | Custom path to an overlay HTML template |
+| `show_score` | `true` | Display game scores in the overlay |
+| `show_sets` | `true` | Display set scores in the overlay |
 
 ### Custom Overlay Templates
 
-Place your custom `player_overlay.html` in:
-1. `~/.config/TFCStreamManager/` (preferred)
-2. Same directory as the executable
-3. Current working directory
+Two overlay templates are included:
+- `player_overlay.html` - Standard player layout
+- `player_overlay_team.html` - Team-focused layout showing both team and player names
+
+Both templates auto-refresh via JavaScript at the configured `refreshInterval`.
+
+Place your custom overlay template in one of these locations (checked in order):
+1. Path configured via `overlay_path` setting
+2. `~/.config/TFCStreamManager/` (preferred)
+3. Same directory as the executable
+4. Current working directory
 
 Available template placeholders:
 - `{{tournamentName}}`, `{{table}}`
@@ -83,5 +98,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Related Projects
 
-- [TFCStreamManager (Windows)](https://github.com/beanieboi/TFCStreamManager) - Windows version built with C#/WPF
+- [TFCStreamManager (Windows)](https://github.com/beanieboi/TFCStreamManager-Windows) - Windows version built with C#/WPF
 - [Kickertool](https://tournament.io) - Tournament management platform
