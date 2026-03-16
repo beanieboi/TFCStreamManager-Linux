@@ -7,9 +7,11 @@ use std::path::PathBuf;
 
 const DEFAULT_PORT: u16 = 8080;
 const DEFAULT_REFRESH_INTERVAL: u32 = 30;
+const DEFAULT_OBS_PORT: u16 = 4455;
 const KEYRING_TARGET: &str = "default";
 const KEYRING_SERVICE: &str = "TFCStreamManager";
 const KEYRING_USERNAME: &str = "api_key";
+const KEYRING_OBS_USERNAME: &str = "obs_password";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -23,6 +25,8 @@ pub struct Settings {
     pub show_sets: bool,
     #[serde(default = "default_true")]
     pub show_score: bool,
+    #[serde(default = "default_obs_port")]
+    pub obs_port: u16,
 }
 
 fn default_port() -> u16 {
@@ -37,6 +41,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_obs_port() -> u16 {
+    DEFAULT_OBS_PORT
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -45,6 +53,7 @@ impl Default for Settings {
             overlay_path: None,
             show_sets: true,
             show_score: true,
+            obs_port: DEFAULT_OBS_PORT,
         }
     }
 }
@@ -58,6 +67,11 @@ impl SettingsService {
     fn keyring_entry(&self) -> Result<Entry> {
         Entry::new_with_target(KEYRING_TARGET, KEYRING_SERVICE, KEYRING_USERNAME)
             .context("Failed to create Secret Service entry")
+    }
+
+    fn obs_keyring_entry(&self) -> Result<Entry> {
+        Entry::new_with_target(KEYRING_TARGET, KEYRING_SERVICE, KEYRING_OBS_USERNAME)
+            .context("Failed to create Secret Service entry for OBS password")
     }
 
     pub fn new() -> Result<Self> {
@@ -129,6 +143,32 @@ impl SettingsService {
         Ok(())
     }
 
+    pub fn load_obs_password(&self) -> Option<String> {
+        if let Ok(entry) = self.obs_keyring_entry()
+            && let Ok(password) = entry.get_password()
+        {
+            return Some(password);
+        }
+        None
+    }
+
+    pub fn save_obs_password(&self, password: &str) -> Result<()> {
+        if password.is_empty() {
+            return self.delete_obs_password();
+        }
+        let entry = self.obs_keyring_entry()?;
+        entry
+            .set_password(password)
+            .map_err(|e| anyhow::anyhow!("Failed to save OBS password to keyring: {}", e))
+    }
+
+    pub fn delete_obs_password(&self) -> Result<()> {
+        if let Ok(entry) = self.obs_keyring_entry() {
+            let _ = entry.delete_credential();
+        }
+        Ok(())
+    }
+
     pub fn get_default_overlay_path(&self) -> PathBuf {
         // Look for overlay in config dir first, then in executable directory
         let config_overlay = self.config_dir.join("player_overlay.html");
@@ -183,6 +223,7 @@ mod tests {
         assert!(s.overlay_path.is_none());
         assert!(s.show_sets);
         assert!(s.show_score);
+        assert_eq!(s.obs_port, 4455);
     }
 
     #[test]
@@ -192,7 +233,8 @@ mod tests {
             "refresh_interval": 15,
             "overlay_path": "/tmp/overlay.html",
             "show_sets": false,
-            "show_score": true
+            "show_score": true,
+            "obs_port": 5555
         }"#;
         let s: Settings = serde_json::from_str(json).unwrap();
         assert_eq!(s.port, 9090);
@@ -200,6 +242,7 @@ mod tests {
         assert_eq!(s.overlay_path, Some("/tmp/overlay.html".into()));
         assert!(!s.show_sets);
         assert!(s.show_score);
+        assert_eq!(s.obs_port, 5555);
     }
 
     #[test]
@@ -210,6 +253,7 @@ mod tests {
         assert_eq!(s.refresh_interval, 30);
         assert!(s.show_sets);
         assert!(s.show_score);
+        assert_eq!(s.obs_port, 4455);
     }
 
     #[test]
@@ -220,6 +264,7 @@ mod tests {
             overlay_path: Some("/custom.html".into()),
             show_sets: false,
             show_score: false,
+            obs_port: 9999,
         };
         let json = serde_json::to_string(&s).unwrap();
         let s2: Settings = serde_json::from_str(&json).unwrap();

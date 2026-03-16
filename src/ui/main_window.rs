@@ -12,8 +12,8 @@ use tokio::sync::RwLock;
 use super::{DebugLog, SettingsDialog};
 use crate::models::{DEFAULT_SCORE_NAME, DEFAULT_SETS_NAME, OverlayContent, Table, Tournament};
 use crate::services::{
-    KickertoolApiService, LogCallback, OverlayMode, OverlayStateManager, ServiceDiscovery,
-    Settings, SettingsService, TableMonitor, WebServer, log,
+    KickertoolApiService, LogCallback, ObsConnectionState, ObsService, OverlayMode,
+    OverlayStateManager, ServiceDiscovery, Settings, SettingsService, TableMonitor, WebServer, log,
 };
 
 const REMOTE_HELP_TEXT: &str = "Remote mode active.\n\nSend POST requests to /scores endpoint with JSON:\n\n{\n  \"teamAScore\": 0,\n  \"teamBScore\": 0,\n  \"teamAName\": \"Team A\",\n  \"teamBName\": \"Team B\",\n  \"eventName\": \"Tournament\"\n}";
@@ -24,6 +24,9 @@ struct HeaderControls {
     server_url_label: Label,
     settings_button: Button,
     debug_button: Button,
+    obs_connect_button: Button,
+    obs_pause_button: Button,
+    obs_status_label: Label,
 }
 
 struct ModeButtons {
@@ -126,6 +129,14 @@ impl MainWindow {
             overlay_state.clone(),
             Arc::clone(&runtime),
         );
+        let obs_service = Arc::new(ObsService::new(Arc::clone(&log_callback)));
+        Self::connect_obs_buttons(
+            &header,
+            Arc::clone(&obs_service),
+            Arc::clone(&settings_service),
+            Arc::clone(&settings),
+            Arc::clone(&runtime),
+        );
         Self::connect_settings_dialog(
             &header.settings_button,
             &window,
@@ -171,6 +182,8 @@ impl MainWindow {
     }
 
     fn build_header() -> (GtkBox, HeaderControls) {
+        let outer_box = GtkBox::new(Orientation::Vertical, 4);
+
         let header_box = GtkBox::new(Orientation::Horizontal, 8);
 
         let start_button = Button::with_label("Start Server");
@@ -190,14 +203,32 @@ impl MainWindow {
         header_box.append(&settings_button);
         header_box.append(&debug_button);
 
+        let obs_box = GtkBox::new(Orientation::Horizontal, 8);
+        let obs_connect_button = Button::with_label("Connect OBS");
+        let obs_pause_button = Button::with_label("Pause Scene");
+        obs_pause_button.set_sensitive(false);
+        let obs_status_label = Label::new(Some("OBS: Not connected"));
+        obs_status_label.set_hexpand(true);
+        obs_status_label.set_xalign(0.0);
+
+        obs_box.append(&obs_connect_button);
+        obs_box.append(&obs_pause_button);
+        obs_box.append(&obs_status_label);
+
+        outer_box.append(&header_box);
+        outer_box.append(&obs_box);
+
         (
-            header_box,
+            outer_box,
             HeaderControls {
                 start_button,
                 stop_button,
                 server_url_label,
                 settings_button,
                 debug_button,
+                obs_connect_button,
+                obs_pause_button,
+                obs_status_label,
             },
         )
     }
@@ -431,7 +462,7 @@ impl MainWindow {
             let rt = Arc::clone(&runtime);
 
             dialog.run(move |result| {
-                if let Some((new_settings, api_key)) = result {
+                if let Some((new_settings, api_key, obs_password)) = result {
                     if let Err(e) = settings_service.save(&new_settings) {
                         log(
                             &log_callback,
@@ -447,6 +478,13 @@ impl MainWindow {
                         );
                     } else {
                         log(&log_callback, "Settings", "API key saved successfully");
+                    }
+                    if let Err(e) = settings_service.save_obs_password(&obs_password) {
+                        log(
+                            &log_callback,
+                            "Settings",
+                            format!("Failed to save OBS password: {}", e),
+                        );
                     }
 
                     let settings_arc = Arc::clone(&settings_arc);
@@ -469,6 +507,103 @@ impl MainWindow {
         let parent = parent.clone();
         debug_button.connect_clicked(move |_| {
             debug_log.show(&parent);
+        });
+    }
+
+    fn connect_obs_buttons(
+        header: &HeaderControls,
+        obs_service: Arc<ObsService>,
+        settings_service: Arc<SettingsService>,
+        settings: Arc<RwLock<Settings>>,
+        runtime: Arc<Runtime>,
+    ) {
+        // Connect button
+        let obs = Arc::clone(&obs_service);
+        let ss = Arc::clone(&settings_service);
+        let s = Arc::clone(&settings);
+        let rt = Arc::clone(&runtime);
+        let connect_btn = header.obs_connect_button.clone();
+        let pause_btn = header.obs_pause_button.clone();
+        let status_label = header.obs_status_label.clone();
+        header.obs_connect_button.connect_clicked(move |_| {
+            let obs = Arc::clone(&obs);
+            let ss = Arc::clone(&ss);
+            let s = Arc::clone(&s);
+            let connect_btn = connect_btn.clone();
+            let pause_btn = pause_btn.clone();
+            let status_label = status_label.clone();
+
+            // Check current state to toggle connect/disconnect
+            let obs_check = Arc::clone(&obs);
+            let rt_check = Arc::clone(&rt);
+            let is_connected = rt_check.block_on(async {
+                matches!(obs_check.get_state().await, ObsConnectionState::Connected)
+            });
+
+            if is_connected {
+                let obs_dc = Arc::clone(&obs);
+                rt.spawn(async move {
+                    obs_dc.disconnect().await;
+                });
+                connect_btn.set_label("Connect OBS");
+                pause_btn.set_sensitive(false);
+                status_label.set_text("OBS: Not connected");
+            } else {
+                let password = ss.load_obs_password().unwrap_or_default();
+                let (tx, rx) = std::sync::mpsc::channel();
+                let obs_conn = Arc::clone(&obs);
+                rt.spawn(async move {
+                    let port = s.read().await.obs_port;
+                    obs_conn.connect(port, password).await;
+                    let state = obs_conn.get_state().await;
+                    let _ = tx.send(state);
+                });
+
+                connect_btn.set_sensitive(false);
+                status_label.set_text("OBS: Connecting...");
+
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    match rx.try_recv() {
+                        Ok(state) => {
+                            connect_btn.set_sensitive(true);
+                            match state {
+                                ObsConnectionState::Connected => {
+                                    status_label.set_text("OBS: Connected");
+                                    connect_btn.set_label("Disconnect OBS");
+                                    pause_btn.set_sensitive(true);
+                                }
+                                ObsConnectionState::Error(ref msg) => {
+                                    status_label.set_text(&format!("OBS: {msg}"));
+                                    connect_btn.set_label("Connect OBS");
+                                    pause_btn.set_sensitive(false);
+                                }
+                                _ => {
+                                    status_label.set_text("OBS: Not connected");
+                                    connect_btn.set_label("Connect OBS");
+                                    pause_btn.set_sensitive(false);
+                                }
+                            }
+                            glib::ControlFlow::Break
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            connect_btn.set_sensitive(true);
+                            status_label.set_text("OBS: Connection failed");
+                            glib::ControlFlow::Break
+                        }
+                    }
+                });
+            }
+        });
+
+        // Pause button
+        let obs = Arc::clone(&obs_service);
+        let rt = Arc::clone(&runtime);
+        header.obs_pause_button.connect_clicked(move |_| {
+            let obs = Arc::clone(&obs);
+            rt.spawn(async move {
+                obs.switch_scene("Pause".to_string()).await;
+            });
         });
     }
 

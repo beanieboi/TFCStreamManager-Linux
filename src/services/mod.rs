@@ -1,4 +1,5 @@
 mod api;
+mod obs_service;
 mod overlay_state;
 mod service_discovery;
 mod settings;
@@ -14,6 +15,7 @@ pub fn log(log: &LogCallback, sender: &str, msg: impl Into<String>) {
 }
 
 pub use api::KickertoolApiService;
+pub use obs_service::{ObsConnectionState, ObsService};
 pub use overlay_state::{OverlayMode, OverlayStateManager};
 pub use service_discovery::ServiceDiscovery;
 pub use settings::{Settings, SettingsService};
