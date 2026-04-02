@@ -119,8 +119,14 @@ mod tests {
         let match_data = Match {
             id: "m1".into(),
             entries: vec![
-                MatchEntry { id: "e1".into(), name: "Team Alpha".into() },
-                MatchEntry { id: "e2".into(), name: "Team Beta".into() },
+                MatchEntry {
+                    id: "e1".into(),
+                    name: "Team Alpha".into(),
+                },
+                MatchEntry {
+                    id: "e2".into(),
+                    name: "Team Beta".into(),
+                },
             ],
             state: "running".into(),
             encounters: vec![],
