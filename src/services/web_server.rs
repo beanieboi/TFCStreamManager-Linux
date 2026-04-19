@@ -191,27 +191,38 @@ async fn handle_scores(
     }
 
     let old_content = state.overlay_state.get_content().await;
-    let new_content = OverlayContent {
-        table: old_content.table,
-        team_a: scores.team_a_name,
-        team_b: scores.team_b_name,
-        score_a: scores.team_a_score.to_string(),
-        score_b: scores.team_b_score.to_string(),
-        team_a_player: scores.team_a_player,
-        team_b_player: scores.team_b_player,
-        tournament_name: scores.event_name,
-        ..old_content
-    };
+    let mut new_content = old_content.clone();
+    if let Some(v) = scores.team_a_name.filter(|s| !s.is_empty()) {
+        new_content.team_a = v;
+    }
+    if let Some(v) = scores.team_b_name.filter(|s| !s.is_empty()) {
+        new_content.team_b = v;
+    }
+    if let Some(v) = scores.team_a_score {
+        new_content.score_a = v.to_string();
+    }
+    if let Some(v) = scores.team_b_score {
+        new_content.score_b = v.to_string();
+    }
+    if let Some(v) = scores.team_a_player.filter(|s| !s.is_empty()) {
+        new_content.team_a_player = v;
+    }
+    if let Some(v) = scores.team_b_player.filter(|s| !s.is_empty()) {
+        new_content.team_b_player = v;
+    }
+    if let Some(v) = scores.event_name.filter(|s| !s.is_empty()) {
+        new_content.tournament_name = v;
+    }
 
-    state.overlay_state.set_content(new_content).await;
     log(
         &state.log_callback,
         "WebServer",
         format!(
             "Updated scores to {}:{}",
-            scores.team_a_score, scores.team_b_score
+            new_content.score_a, new_content.score_b
         ),
     );
+    state.overlay_state.set_content(new_content).await;
 
     StatusCode::OK
 }

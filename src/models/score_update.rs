@@ -2,20 +2,20 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreUpdate {
-    #[serde(default, rename = "teamAScore")]
-    pub team_a_score: i32,
-    #[serde(default, rename = "teamBScore")]
-    pub team_b_score: i32,
-    #[serde(default, rename = "teamAName")]
-    pub team_a_name: String,
-    #[serde(default, rename = "teamBName")]
-    pub team_b_name: String,
-    #[serde(default, rename = "teamAPlayer")]
-    pub team_a_player: String,
-    #[serde(default, rename = "teamBPlayer")]
-    pub team_b_player: String,
-    #[serde(default, rename = "eventName")]
-    pub event_name: String,
+    #[serde(rename = "teamAScore")]
+    pub team_a_score: Option<i32>,
+    #[serde(rename = "teamBScore")]
+    pub team_b_score: Option<i32>,
+    #[serde(rename = "teamAName")]
+    pub team_a_name: Option<String>,
+    #[serde(rename = "teamBName")]
+    pub team_b_name: Option<String>,
+    #[serde(rename = "teamAPlayer")]
+    pub team_a_player: Option<String>,
+    #[serde(rename = "teamBPlayer")]
+    pub team_b_player: Option<String>,
+    #[serde(rename = "eventName")]
+    pub event_name: Option<String>,
 }
 
 #[cfg(test)]
@@ -34,38 +34,48 @@ mod tests {
             "eventName": "Finals"
         }"#;
         let su: ScoreUpdate = serde_json::from_str(json).unwrap();
-        assert_eq!(su.team_a_score, 5);
-        assert_eq!(su.team_b_score, 3);
-        assert_eq!(su.team_a_name, "Foo FC");
-        assert_eq!(su.team_b_name, "Bar United");
-        assert_eq!(su.team_a_player, "Alice");
-        assert_eq!(su.team_b_player, "Bob");
-        assert_eq!(su.event_name, "Finals");
+        assert_eq!(su.team_a_score, Some(5));
+        assert_eq!(su.team_b_score, Some(3));
+        assert_eq!(su.team_a_name.as_deref(), Some("Foo FC"));
+        assert_eq!(su.team_b_name.as_deref(), Some("Bar United"));
+        assert_eq!(su.team_a_player.as_deref(), Some("Alice"));
+        assert_eq!(su.team_b_player.as_deref(), Some("Bob"));
+        assert_eq!(su.event_name.as_deref(), Some("Finals"));
     }
 
     #[test]
-    fn deserialize_with_defaults() {
+    fn deserialize_with_missing_fields() {
         let json = r#"{}"#;
         let su: ScoreUpdate = serde_json::from_str(json).unwrap();
-        assert_eq!(su.team_a_score, 0);
-        assert_eq!(su.team_b_score, 0);
-        assert_eq!(su.team_a_name, "");
+        assert_eq!(su.team_a_score, None);
+        assert_eq!(su.team_b_score, None);
+        assert_eq!(su.team_a_name, None);
+    }
+
+    #[test]
+    fn deserialize_partial_update() {
+        let json = r#"{"teamAScore": 3, "teamBScore": 1}"#;
+        let su: ScoreUpdate = serde_json::from_str(json).unwrap();
+        assert_eq!(su.team_a_score, Some(3));
+        assert_eq!(su.team_b_score, Some(1));
+        assert_eq!(su.team_a_name, None);
+        assert_eq!(su.event_name, None);
     }
 
     #[test]
     fn serialize_roundtrip() {
         let su = ScoreUpdate {
-            team_a_score: 10,
-            team_b_score: 7,
-            team_a_name: "A".into(),
-            team_b_name: "B".into(),
-            team_a_player: "P1".into(),
-            team_b_player: "P2".into(),
-            event_name: "Cup".into(),
+            team_a_score: Some(10),
+            team_b_score: Some(7),
+            team_a_name: Some("A".into()),
+            team_b_name: Some("B".into()),
+            team_a_player: Some("P1".into()),
+            team_b_player: Some("P2".into()),
+            event_name: Some("Cup".into()),
         };
         let json = serde_json::to_string(&su).unwrap();
         let su2: ScoreUpdate = serde_json::from_str(&json).unwrap();
-        assert_eq!(su2.team_a_score, 10);
-        assert_eq!(su2.team_b_score, 7);
+        assert_eq!(su2.team_a_score, Some(10));
+        assert_eq!(su2.team_b_score, Some(7));
     }
 }
