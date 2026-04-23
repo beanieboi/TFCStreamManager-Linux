@@ -1,7 +1,9 @@
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Button, ComboBoxText, Entry, Label, Orientation, Stack, ToggleButton};
 
-use super::{HeaderControls, KickertoolControls, MainWindow, ManualControls, ModeButtons};
+use super::{
+    HeaderControls, KickertoolControls, MainWindow, ManualControls, ManualForm, ModeButtons,
+};
 
 const REMOTE_HELP_TEXT: &str = "Remote mode active.\n\nSend POST requests to /scores endpoint with JSON:\n\n{\n  \"teamAScore\": 0,\n  \"teamBScore\": 0,\n  \"teamAName\": \"Team A\",\n  \"teamBName\": \"Team B\",\n  \"eventName\": \"Tournament\"\n}";
 
@@ -127,28 +129,20 @@ impl MainWindow {
         let panel = GtkBox::new(Orientation::Vertical, 8);
         panel.set_margin_top(8);
 
-        let labels = [
-            "Tournament:",
-            "Discipline:",
-            "Round:",
-            "Group:",
-            "Team A:",
-            "Team B:",
-            "Player A:",
-            "Player B:",
-            "Score A:",
-            "Score B:",
-            "Sets A:",
-            "Sets B:",
-        ];
-
-        let mut entries = Vec::new();
-        for label_text in labels {
-            let entry = Entry::new();
-            let row = Self::build_labeled_entry(label_text, &entry);
-            panel.append(&row);
-            entries.push(entry);
-        }
+        let form = ManualForm {
+            tournament: Self::append_labeled_entry(&panel, "Tournament:"),
+            discipline: Self::append_labeled_entry(&panel, "Discipline:"),
+            round: Self::append_labeled_entry(&panel, "Round:"),
+            group: Self::append_labeled_entry(&panel, "Group:"),
+            team_a: Self::append_labeled_entry(&panel, "Team A:"),
+            team_b: Self::append_labeled_entry(&panel, "Team B:"),
+            team_a_player: Self::append_labeled_entry(&panel, "Player A:"),
+            team_b_player: Self::append_labeled_entry(&panel, "Player B:"),
+            score_a: Self::append_labeled_entry(&panel, "Score A:"),
+            score_b: Self::append_labeled_entry(&panel, "Score B:"),
+            sets_a: Self::append_labeled_entry(&panel, "Sets A:"),
+            sets_b: Self::append_labeled_entry(&panel, "Sets B:"),
+        };
 
         let update_button = Button::with_label("Update Overlay");
         panel.append(&update_button);
@@ -156,7 +150,7 @@ impl MainWindow {
         (
             panel,
             ManualControls {
-                entries,
+                form,
                 update_button,
             },
         )
@@ -185,5 +179,12 @@ impl MainWindow {
         row.append(entry);
 
         row
+    }
+
+    fn append_labeled_entry(panel: &GtkBox, label_text: &str) -> Entry {
+        let entry = Entry::new();
+        let row = Self::build_labeled_entry(label_text, &entry);
+        panel.append(&row);
+        entry
     }
 }

@@ -39,8 +39,24 @@ pub(super) struct KickertoolControls {
 }
 
 pub(super) struct ManualControls {
-    entries: Vec<gtk4::Entry>,
+    form: ManualForm,
     update_button: gtk4::Button,
+}
+
+#[derive(Clone)]
+pub(super) struct ManualForm {
+    tournament: gtk4::Entry,
+    discipline: gtk4::Entry,
+    round: gtk4::Entry,
+    group: gtk4::Entry,
+    team_a: gtk4::Entry,
+    team_b: gtk4::Entry,
+    team_a_player: gtk4::Entry,
+    team_b_player: gtk4::Entry,
+    score_a: gtk4::Entry,
+    score_b: gtk4::Entry,
+    sets_a: gtk4::Entry,
+    sets_b: gtk4::Entry,
 }
 
 pub(super) struct ServerContext {

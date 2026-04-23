@@ -68,10 +68,10 @@ impl MainWindow {
         runtime: Arc<Runtime>,
     ) {
         let overlay_state_clone = overlay_state.clone();
-        let entries_clone = manual_controls.entries.clone();
+        let form = manual_controls.form.clone();
         let rt = Arc::clone(&runtime);
         manual_controls.update_button.connect_clicked(move |_| {
-            let values = Self::read_manual_entries(&entries_clone);
+            let values = Self::read_manual_entries(&form);
 
             let overlay = overlay_state_clone.clone();
             rt.spawn(async move {

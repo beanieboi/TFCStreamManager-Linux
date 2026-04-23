@@ -1,28 +1,28 @@
 use gtk4::prelude::*;
-use gtk4::{Button, Entry, Label};
+use gtk4::{Button, Label};
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
-use super::{MainWindow, ManualValues, ServerContext};
+use super::{MainWindow, ManualForm, ManualValues, ServerContext};
 use crate::models::{DEFAULT_SCORE_NAME, DEFAULT_SETS_NAME, OverlayContent, Table};
 use crate::services::{OverlayMode, OverlayStateManager, ServiceDiscovery, WebServer, log};
 
 impl MainWindow {
-    pub(super) fn read_manual_entries(entries: &[Entry]) -> ManualValues {
+    pub(super) fn read_manual_entries(form: &ManualForm) -> ManualValues {
         ManualValues {
-            tournament: entries[0].text().to_string(),
-            discipline: entries[1].text().to_string(),
-            round: entries[2].text().to_string(),
-            group: entries[3].text().to_string(),
-            team_a: entries[4].text().to_string(),
-            team_b: entries[5].text().to_string(),
-            team_a_player: entries[6].text().to_string(),
-            team_b_player: entries[7].text().to_string(),
-            score_a: entries[8].text().to_string(),
-            score_b: entries[9].text().to_string(),
-            sets_a: entries[10].text().to_string(),
-            sets_b: entries[11].text().to_string(),
+            tournament: form.tournament.text().to_string(),
+            discipline: form.discipline.text().to_string(),
+            round: form.round.text().to_string(),
+            group: form.group.text().to_string(),
+            team_a: form.team_a.text().to_string(),
+            team_b: form.team_b.text().to_string(),
+            team_a_player: form.team_a_player.text().to_string(),
+            team_b_player: form.team_b_player.text().to_string(),
+            score_a: form.score_a.text().to_string(),
+            score_b: form.score_b.text().to_string(),
+            sets_a: form.sets_a.text().to_string(),
+            sets_b: form.sets_b.text().to_string(),
         }
     }
 
