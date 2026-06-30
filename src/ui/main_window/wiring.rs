@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{ApplicationWindow, Button, Stack};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -18,6 +19,29 @@ use crate::services::{
 use crate::ui::{DebugLog, SettingsDialog};
 
 impl MainWindow {
+    pub(super) fn run_async_into_ui<T, Fut, OnResult>(
+        runtime: &Arc<Runtime>,
+        future: Fut,
+        on_result: OnResult,
+    ) where
+        T: Send + 'static,
+        Fut: Future<Output = T> + Send + 'static,
+        OnResult: FnOnce(T) + 'static,
+    {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        runtime.spawn(async move {
+            let result = future.await;
+            let _ = tx.send(result);
+        });
+
+        glib::MainContext::default().spawn_local(async move {
+            if let Ok(result) = rx.await {
+                on_result(result);
+            }
+        });
+    }
+
     pub(super) fn connect_mode_buttons(
         mode_buttons: &ModeButtons,
         content_stack: &Stack,
@@ -187,39 +211,29 @@ impl MainWindow {
             let tables = Rc::clone(&tournament_tables_clone);
             let combo = tournament_combo_clone.clone();
             let log_callback = Arc::clone(&log_callback_clone);
-            let rt = Arc::clone(&rt);
 
             combo.remove_all();
 
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            rt.spawn(async move {
-                let result = api.load_tournaments_with_tables().await;
-                let _ = tx.send(result);
-            });
-
-            glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-                match rx.try_recv() {
-                    Ok(Ok((all_tournaments, all_tables))) => {
+            Self::run_async_into_ui(
+                &rt,
+                async move { api.load_tournaments_with_tables().await },
+                move |result| match result {
+                    Ok((all_tournaments, all_tables)) => {
                         for tournament in &all_tournaments {
                             combo.append(Some(&tournament.id), &tournament.name);
                         }
                         *tournaments.borrow_mut() = all_tournaments;
                         *tables.borrow_mut() = all_tables;
-                        glib::ControlFlow::Break
                     }
-                    Ok(Err(e)) => {
+                    Err(e) => {
                         log(
                             &log_callback,
                             "Kickertool",
                             format!("Failed to load tournaments: {}", e),
                         );
-                        glib::ControlFlow::Break
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
-                }
-            });
+                },
+            );
         });
     }
 

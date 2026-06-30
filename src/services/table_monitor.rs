@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::sync::RwLock;
+use tokio::task::AbortHandle;
 use tokio::time::{Duration, interval};
 
 use super::{KickertoolApiService, LogCallback, OverlayStateManager, Settings, log};
@@ -10,9 +12,7 @@ pub struct TableMonitor {
     overlay_state: OverlayStateManager,
     settings: Arc<RwLock<Settings>>,
     log_callback: LogCallback,
-    tournament: Arc<RwLock<Option<Tournament>>>,
-    table_id: Arc<RwLock<Option<String>>>,
-    shutdown_tx: Arc<RwLock<Option<tokio::sync::oneshot::Sender<()>>>>,
+    task_handle: Arc<Mutex<Option<AbortHandle>>>,
 }
 
 impl TableMonitor {
@@ -27,34 +27,17 @@ impl TableMonitor {
             overlay_state,
             settings,
             log_callback,
-            tournament: Arc::new(RwLock::new(None)),
-            table_id: Arc::new(RwLock::new(None)),
-            shutdown_tx: Arc::new(RwLock::new(None)),
+            task_handle: Arc::new(Mutex::new(None)),
         }
     }
 
     pub async fn start_monitoring(&self, tournament: Tournament, table_id: String) {
-        // Stop any existing monitoring
         self.stop_monitoring().await;
 
         let refresh_interval = {
             let settings = self.settings.read().await;
             settings.refresh_interval
         };
-
-        {
-            let mut t = self.tournament.write().await;
-            *t = Some(tournament.clone());
-        }
-        {
-            let mut tid = self.table_id.write().await;
-            *tid = Some(table_id.clone());
-        }
-        let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
-        {
-            let mut tx = self.shutdown_tx.write().await;
-            *tx = Some(shutdown_tx);
-        }
 
         log(
             &self.log_callback,
@@ -69,43 +52,42 @@ impl TableMonitor {
         let overlay_state = self.overlay_state.clone();
         let settings = Arc::clone(&self.settings);
         let log_callback = Arc::clone(&self.log_callback);
-        let tournament_arc = Arc::clone(&self.tournament);
-        let table_id_arc = Arc::clone(&self.table_id);
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let mut ticker = interval(Duration::from_secs(refresh_interval as u64));
 
             loop {
-                tokio::select! {
-                    _ = ticker.tick() => {
-                        let tournament_opt = tournament_arc.read().await.clone();
-                        let table_id_opt = table_id_arc.read().await.clone();
+                ticker.tick().await;
 
-                        if let (Some(tournament), Some(table_id)) = (tournament_opt, table_id_opt)
-                            && let Err(e) = fetch_current_match(
-                                &api_service,
-                                &overlay_state,
-                                &settings,
-                                &log_callback,
-                                &tournament,
-                                &table_id,
-                            ).await {
-                            log(&log_callback, "TableMonitor", format!("Error: {}", e));
-                        }
-                    }
-                    _ = &mut shutdown_rx => {
-                        break;
-                    }
+                if let Err(e) = fetch_current_match(
+                    &api_service,
+                    &overlay_state,
+                    &settings,
+                    &log_callback,
+                    &tournament,
+                    &table_id,
+                )
+                .await
+                {
+                    log(&log_callback, "TableMonitor", format!("Error: {}", e));
                 }
             }
-
-            log(&log_callback, "TableMonitor", "Stopped monitoring");
         });
+
+        let mut task_handle = self
+            .task_handle
+            .lock()
+            .expect("table monitor lock poisoned");
+        *task_handle = Some(task.abort_handle());
     }
 
     pub async fn stop_monitoring(&self) {
-        let mut tx = self.shutdown_tx.write().await;
-        if let Some(sender) = tx.take() {
-            let _ = sender.send(());
+        let mut task_handle = self
+            .task_handle
+            .lock()
+            .expect("table monitor lock poisoned");
+        if let Some(handle) = task_handle.take() {
+            handle.abort();
+            log(&self.log_callback, "TableMonitor", "Stopped monitoring");
         }
     }
 }
@@ -171,9 +153,7 @@ impl Clone for TableMonitor {
             overlay_state: self.overlay_state.clone(),
             settings: Arc::clone(&self.settings),
             log_callback: Arc::clone(&self.log_callback),
-            tournament: Arc::clone(&self.tournament),
-            table_id: Arc::clone(&self.table_id),
-            shutdown_tx: Arc::clone(&self.shutdown_tx),
+            task_handle: Arc::clone(&self.task_handle),
         }
     }
 }
