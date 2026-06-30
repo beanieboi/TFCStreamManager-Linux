@@ -1,5 +1,8 @@
+use futures_channel::oneshot;
 use gtk4::prelude::*;
-use gtk4::{ApplicationWindow, Button, Stack};
+use gtk4::{
+    ApplicationWindow, Button, ButtonsType, DialogFlags, MessageDialog, MessageType, Stack,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
@@ -13,8 +16,8 @@ use super::{
 };
 use crate::models::{Table, Tournament};
 use crate::services::{
-    KickertoolApiService, LogCallback, OverlayMode, OverlayStateManager, Settings, SettingsService,
-    TableMonitor, log,
+    ApiError, KickertoolApiService, LogCallback, OverlayMode, OverlayStateManager, Settings,
+    SettingsService, TableMonitor, log,
 };
 use crate::ui::{DebugLog, SettingsDialog};
 
@@ -28,14 +31,14 @@ impl MainWindow {
         Fut: Future<Output = T> + Send + 'static,
         OnResult: FnOnce(T) + 'static,
     {
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        let (tx, rx) = oneshot::channel();
 
         runtime.spawn(async move {
             let result = future.await;
             let _ = tx.send(result);
         });
 
-        glib::MainContext::default().spawn_local(async move {
+        glib::spawn_future_local(async move {
             if let Ok(result) = rx.await {
                 on_result(result);
             }
@@ -191,8 +194,24 @@ impl MainWindow {
         });
     }
 
+    fn show_kickertool_access_dialog(parent: &ApplicationWindow, message: &str) {
+        let dialog = MessageDialog::new(
+            Some(parent),
+            DialogFlags::MODAL,
+            MessageType::Error,
+            ButtonsType::Ok,
+            "Kickertool API access problem",
+        );
+        dialog.format_secondary_text(Some(message));
+        dialog.connect_response(|dialog, _| {
+            dialog.close();
+        });
+        dialog.present();
+    }
+
     pub(super) fn connect_refresh_tournaments(
         kickertool: &KickertoolControls,
+        parent: &ApplicationWindow,
         api_service: Arc<KickertoolApiService>,
         tournaments: Rc<RefCell<Vec<Tournament>>>,
         tournament_tables: Rc<RefCell<HashMap<String, Vec<Table>>>>,
@@ -204,6 +223,7 @@ impl MainWindow {
         let tournament_tables_clone = Rc::clone(&tournament_tables);
         let tournament_combo_clone = kickertool.tournament_combo.clone();
         let log_callback_clone = Arc::clone(&log_callback);
+        let parent = parent.clone();
         let rt = Arc::clone(&runtime);
         kickertool.refresh_button.connect_clicked(move |_| {
             let api = Arc::clone(&api_service_clone);
@@ -211,14 +231,27 @@ impl MainWindow {
             let tables = Rc::clone(&tournament_tables_clone);
             let combo = tournament_combo_clone.clone();
             let log_callback = Arc::clone(&log_callback_clone);
+            let parent = parent.clone();
 
             combo.remove_all();
+            log(&log_callback, "Kickertool", "Loading tournaments...");
 
             Self::run_async_into_ui(
                 &rt,
                 async move { api.load_tournaments_with_tables().await },
                 move |result| match result {
                     Ok((all_tournaments, all_tables)) => {
+                        log(
+                            &log_callback,
+                            "Kickertool",
+                            format!("Loaded {} tournaments", all_tournaments.len()),
+                        );
+                        if all_tournaments.is_empty() {
+                            Self::show_kickertool_access_dialog(
+                                &parent,
+                                "No tournaments were returned for this API key. Check that the key is valid and has access to the expected tournaments.",
+                            );
+                        }
                         for tournament in &all_tournaments {
                             combo.append(Some(&tournament.id), &tournament.name);
                         }
@@ -231,6 +264,20 @@ impl MainWindow {
                             "Kickertool",
                             format!("Failed to load tournaments: {}", e),
                         );
+                        if let Some(api_error) = e.downcast_ref::<ApiError>() {
+                            let message = match api_error {
+                                ApiError::Unauthorized => {
+                                    "The Kickertool API key is invalid or expired. Create a new key in Kickertool and save it in Settings."
+                                }
+                                ApiError::Forbidden => {
+                                    "The Kickertool API key does not have access to tournament data for this account."
+                                }
+                                ApiError::RequestFailed { .. } => {
+                                    "Kickertool rejected the API request. Check the Debug log for the HTTP status and response."
+                                }
+                            };
+                            Self::show_kickertool_access_dialog(&parent, message);
+                        }
                     }
                 },
             );

@@ -1959,6 +1959,7 @@ dependencies = [
  "axum",
  "chrono",
  "directories",
+ "futures-channel",
  "glib",
  "gtk4",
  "hostname",

@@ -145,13 +145,6 @@ impl MainWindow {
         main_box.append(&content_stack);
         window.set_child(Some(&main_box));
 
-        Self::connect_mode_buttons(
-            &mode_buttons,
-            &content_stack,
-            &kickertool.refresh_button,
-            overlay_state.clone(),
-            Arc::clone(&runtime),
-        );
         Self::connect_manual_update(
             &manual_controls,
             overlay_state.clone(),
@@ -180,10 +173,18 @@ impl MainWindow {
         Self::connect_server_buttons(&header, server_context);
         Self::connect_refresh_tournaments(
             &kickertool,
+            &window,
             Arc::clone(&api_service),
             Rc::clone(&tournaments),
             Rc::clone(&tournament_tables),
             Arc::clone(&log_callback),
+            Arc::clone(&runtime),
+        );
+        Self::connect_mode_buttons(
+            &mode_buttons,
+            &content_stack,
+            &kickertool.refresh_button,
+            overlay_state.clone(),
             Arc::clone(&runtime),
         );
         Self::connect_tournament_selection(

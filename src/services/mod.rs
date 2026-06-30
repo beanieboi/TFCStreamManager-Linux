@@ -13,7 +13,7 @@ pub fn log(log: &LogCallback, sender: &str, msg: impl Into<String>) {
     log(sender.to_string(), msg.into());
 }
 
-pub use api::KickertoolApiService;
+pub use api::{ApiError, KickertoolApiService};
 pub use overlay_state::{OverlayMode, OverlayStateManager};
 pub use service_discovery::ServiceDiscovery;
 pub use settings::{Settings, SettingsService};

@@ -16,12 +16,33 @@ const VALID_TOURNAMENT_STATES: [&str; 5] = [
     "running",
 ];
 
+#[derive(Debug, thiserror::Error)]
+pub enum ApiError {
+    #[error("The Kickertool API key is invalid or expired.")]
+    Unauthorized,
+    #[error("The Kickertool API key does not have access to this resource.")]
+    Forbidden,
+    #[error("API request failed with status {status}: {body}")]
+    RequestFailed {
+        status: reqwest::StatusCode,
+        body: String,
+    },
+}
+
 pub struct KickertoolApiService {
     client: Client,
     api_key: Arc<RwLock<Option<String>>>,
 }
 
 impl KickertoolApiService {
+    fn status_error(status: reqwest::StatusCode, body: String) -> ApiError {
+        match status {
+            reqwest::StatusCode::UNAUTHORIZED => ApiError::Unauthorized,
+            reqwest::StatusCode::FORBIDDEN => ApiError::Forbidden,
+            _ => ApiError::RequestFailed { status, body },
+        }
+    }
+
     pub fn new(settings_service: Arc<SettingsService>) -> Result<Self> {
         let api_key = settings_service.load_api_key();
 
@@ -66,7 +87,7 @@ impl KickertoolApiService {
         let status = response.status();
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("API request failed with status {}: {}", status, error_text);
+            anyhow::bail!(Self::status_error(status, error_text));
         }
 
         let text = response.text().await?;
@@ -97,8 +118,10 @@ impl KickertoolApiService {
 
             let response = request.send().await?;
 
-            if !response.status().is_success() {
-                break;
+            let status = response.status();
+            if !status.is_success() {
+                let error_text = response.text().await.unwrap_or_default();
+                anyhow::bail!(Self::status_error(status, error_text));
             }
 
             let text = response.text().await?;
@@ -122,18 +145,16 @@ impl KickertoolApiService {
                     }
                 }
             } else {
-                // Try parsing as PaginatedResponse
-                match serde_json::from_str::<PaginatedResponse<Vec<T>>>(&text) {
-                    Ok(paginated) => {
-                        let has_more = paginated.has_more();
-                        all_items.extend(paginated.data);
-                        if !has_more {
-                            break;
-                        }
-                        offset += page_size;
-                    }
-                    Err(_) => break,
+                let paginated: PaginatedResponse<Vec<T>> = serde_json::from_str(&text)
+                    .with_context(|| {
+                        format!("Failed to parse paginated response from {endpoint}")
+                    })?;
+                let has_more = paginated.has_more();
+                all_items.extend(paginated.data);
+                if !has_more {
+                    break;
                 }
+                offset += page_size;
             }
         }
 
@@ -146,10 +167,19 @@ impl KickertoolApiService {
         Vec<Tournament>,
         std::collections::HashMap<String, Vec<Table>>,
     )> {
-        let mut tournaments = self
+        let tournaments = self
             .get_all_paginated::<Tournament>("tournaments", 50)
             .await?;
-        tournaments.retain(|t| VALID_TOURNAMENT_STATES.contains(&t.state.as_str()));
+        let filtered_tournaments: Vec<_> = tournaments
+            .iter()
+            .filter(|t| VALID_TOURNAMENT_STATES.contains(&t.state.as_str()))
+            .cloned()
+            .collect();
+        let tournaments = if filtered_tournaments.is_empty() {
+            tournaments
+        } else {
+            filtered_tournaments
+        };
 
         let mut all_tables = std::collections::HashMap::new();
         for tournament in &tournaments {
