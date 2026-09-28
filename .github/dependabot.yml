@@ -6,6 +6,19 @@ updates:
       interval: "weekly"
     assignees:
       - "beanieboi"
+    allow:
+      - dependency-type: "direct"
+      # Include gtk4-sys and gtk4-macros from Cargo.lock in version updates.
+      - dependency-name: "gtk4*"
+        dependency-type: "all"
+    groups:
+      gtk4:
+        patterns:
+          - "gtk4*"
+      gtk4-security:
+        applies-to: "security-updates"
+        patterns:
+          - "gtk4*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
