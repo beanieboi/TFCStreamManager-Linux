@@ -1,4 +1,6 @@
+mod competition;
 mod models;
+mod mtfv;
 mod services;
 mod ui;
 
