@@ -9,10 +9,46 @@ use tokio::sync::RwLock;
 
 use super::{LogCallback, log};
 
+const SERVICE_TYPE: &str = "_http._tcp.local.";
+const INSTANCE_NAME: &str = "TFCStreamServer";
+/// TXT key the tablet reads to tell a started app from a running server.
+pub const TXT_STATE_KEY: &str = "state";
+
+/// What the tablet sees: the app is open (`started`), or the web server is
+/// accepting requests (`running`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerState {
+    Started,
+    Running,
+}
+
+impl ServerState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ServerState::Started => "started",
+            ServerState::Running => "running",
+        }
+    }
+}
+
+fn usable_ips() -> Vec<IpAddr> {
+    get_if_addrs()
+        .map(|ifaces| {
+            ifaces
+                .into_iter()
+                .map(|iface| match iface.addr {
+                    IfAddr::V4(addr) => IpAddr::V4(addr.ip),
+                    IfAddr::V6(addr) => IpAddr::V6(addr.ip),
+                })
+                .filter(|ip| !ip.is_loopback() && !ip.is_unspecified())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub struct ServiceDiscovery {
     daemon: ServiceDaemon,
     service_fullname: Arc<RwLock<Option<String>>>,
-    is_advertising: Arc<RwLock<bool>>,
     log_callback: LogCallback,
 }
 
@@ -60,113 +96,66 @@ impl ServiceDiscovery {
         Ok(Self {
             daemon,
             service_fullname: Arc::new(RwLock::new(None)),
-            is_advertising: Arc::new(RwLock::new(false)),
             log_callback,
         })
     }
 
-    pub async fn start_advertising(&self, port: u16) -> Result<()> {
-        if *self.is_advertising.read().await {
-            return Ok(());
-        }
-
+    /// Registers the service, or re-announces it with a new state. mdns-sd
+    /// replaces a registration with the same fullname, so no unregister is
+    /// needed between states.
+    pub async fn advertise(&self, port: u16, state: ServerState) -> Result<()> {
         let mut hostname = hostname::get()
             .map(|h| h.to_string_lossy().into_owned())
             .unwrap_or_else(|_| "localhost".to_owned());
         if !hostname.ends_with(".local.") {
             hostname = format!("{}.local.", hostname.trim_end_matches('.'));
         }
-        log(
-            &self.log_callback,
-            "ServiceDiscovery",
-            format!("mDNS hostname: {}", hostname),
-        );
 
-        let service_type = "_http._tcp.local.";
-        let instance_name = "TFCStreamServer";
-
-        let mut ips = Vec::new();
-        if let Ok(ifaces) = get_if_addrs() {
-            for iface in ifaces {
-                let ip: IpAddr = match iface.addr {
-                    IfAddr::V4(addr) => IpAddr::V4(addr.ip),
-                    IfAddr::V6(addr) => IpAddr::V6(addr.ip),
-                };
-                if !ip.is_loopback() && !ip.is_unspecified() {
-                    ips.push(ip);
-                }
-            }
-        }
+        let ips = usable_ips();
         if ips.is_empty() {
             log(
                 &self.log_callback,
                 "ServiceDiscovery",
                 "mDNS: No usable IPs found for service",
             );
-        } else {
-            log(
-                &self.log_callback,
-                "ServiceDiscovery",
-                format!("mDNS IPs: {:?}", ips),
-            );
         }
 
+        let properties = [(TXT_STATE_KEY, state.as_str())];
         let service_info = ServiceInfo::new(
-            service_type,
-            instance_name,
+            SERVICE_TYPE,
+            INSTANCE_NAME,
             &hostname,
             ips.as_slice(),
             port,
-            None,
+            &properties[..],
         )?
         .enable_addr_auto();
 
         let fullname = service_info.get_fullname().to_string();
-
         self.daemon.register(service_info)?;
-        log(
-            &self.log_callback,
-            "ServiceDiscovery",
-            format!("mDNS registered: {}", fullname),
-        );
-
-        {
-            let mut name = self.service_fullname.write().await;
-            *name = Some(fullname);
-        }
-        {
-            let mut advertising = self.is_advertising.write().await;
-            *advertising = true;
-        }
+        *self.service_fullname.write().await = Some(fullname.clone());
 
         log(
             &self.log_callback,
             "ServiceDiscovery",
-            format!("mDNS: Started advertising TFCStream on port {}", port),
+            format!(
+                "mDNS: advertising {} on {}:{} as {}",
+                fullname,
+                hostname,
+                port,
+                state.as_str()
+            ),
         );
         Ok(())
     }
 
     pub async fn stop_advertising(&self) -> Result<()> {
-        if !*self.is_advertising.read().await {
+        let Some(fullname) = self.service_fullname.write().await.take() else {
             return Ok(());
-        }
-
-        if let Some(fullname) = self.service_fullname.read().await.clone()
-            && let Ok(receiver) = self.daemon.unregister(&fullname)
-        {
+        };
+        if let Ok(receiver) = self.daemon.unregister(&fullname) {
             let _ = receiver.recv_timeout(Duration::from_secs(1));
         }
-
-        {
-            let mut name = self.service_fullname.write().await;
-            *name = None;
-        }
-        {
-            let mut advertising = self.is_advertising.write().await;
-            *advertising = false;
-        }
-
         log(
             &self.log_callback,
             "ServiceDiscovery",

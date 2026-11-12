@@ -1,12 +1,17 @@
 use gtk4::prelude::*;
-use gtk4::{Button, Label};
+use gtk4::{ApplicationWindow, Button, Label};
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
 
 use super::{MainWindow, ManualForm, ManualValues, ServerContext};
 use crate::models::{DEFAULT_SCORE_NAME, DEFAULT_SETS_NAME, OverlayContent, Table};
-use crate::services::{OverlayMode, OverlayStateManager, ServiceDiscovery, WebServer, log};
+use crate::services::{
+    LogCallback, OverlayMode, OverlayStateManager, ServerState, ServiceDiscovery, Settings,
+    WebServer, log,
+};
 
 impl MainWindow {
     pub(super) fn read_manual_entries(form: &ManualForm) -> ManualValues {
@@ -122,29 +127,7 @@ impl MainWindow {
         }
 
         *context.web_server.borrow_mut() = Some(server);
-        let discovery = match ServiceDiscovery::new(Arc::clone(&context.log_callback)) {
-            Ok(discovery) => Arc::new(discovery),
-            Err(e) => {
-                log(
-                    &context.log_callback,
-                    "ServiceDiscovery",
-                    format!("Failed to start mDNS: {}", e),
-                );
-                return;
-            }
-        };
-        *context.service_discovery.borrow_mut() = Some(Arc::clone(&discovery));
-
-        let log_callback = Arc::clone(&context.log_callback);
-        context.runtime.spawn(async move {
-            if let Err(e) = discovery.start_advertising(port).await {
-                log(
-                    &log_callback,
-                    "ServiceDiscovery",
-                    format!("Failed to start mDNS: {}", e),
-                );
-            }
-        });
+        Self::spawn_advertise(&context, port, ServerState::Running);
 
         start_button.set_sensitive(false);
         stop_button.set_sensitive(true);
@@ -160,10 +143,77 @@ impl MainWindow {
         }
         *context.web_server.borrow_mut() = None;
 
-        if let Some(discovery) = context.service_discovery.borrow_mut().take() {
-            context.runtime.spawn(async move {
-                let _ = discovery.stop_advertising().await;
-            });
-        }
+        let port = context
+            .runtime
+            .block_on(async { context.settings.read().await.port });
+        Self::spawn_advertise(&context, port, ServerState::Started);
+    }
+
+    fn spawn_advertise(context: &ServerContext, port: u16, state: ServerState) {
+        let Some(discovery) = context.service_discovery.borrow().clone() else {
+            return;
+        };
+        let log_callback = Arc::clone(&context.log_callback);
+        context.runtime.spawn(async move {
+            if let Err(e) = discovery.advertise(port, state).await {
+                log(
+                    &log_callback,
+                    "ServiceDiscovery",
+                    format!("Failed to advertise mDNS: {}", e),
+                );
+            }
+        });
+    }
+
+    /// Registers mDNS as `started` as soon as the app is open, so the tablet
+    /// can tell "app open, server stopped" from "app not running".
+    pub(super) fn start_discovery(
+        settings: &Arc<RwLock<Settings>>,
+        log_callback: &LogCallback,
+        runtime: &Arc<Runtime>,
+    ) -> Option<Arc<ServiceDiscovery>> {
+        let discovery = match ServiceDiscovery::new(Arc::clone(log_callback)) {
+            Ok(discovery) => Arc::new(discovery),
+            Err(e) => {
+                log(
+                    log_callback,
+                    "ServiceDiscovery",
+                    format!("Failed to start mDNS: {}", e),
+                );
+                return None;
+            }
+        };
+        let port = runtime.block_on(async { settings.read().await.port });
+        let for_task = Arc::clone(&discovery);
+        let log_callback = Arc::clone(log_callback);
+        runtime.spawn(async move {
+            if let Err(e) = for_task.advertise(port, ServerState::Started).await {
+                log(
+                    &log_callback,
+                    "ServiceDiscovery",
+                    format!("Failed to advertise mDNS: {}", e),
+                );
+            }
+        });
+        Some(discovery)
+    }
+
+    /// Sends an mDNS goodbye when the window closes, so the tablet turns red
+    /// right away instead of after its timeout.
+    pub(super) fn connect_unregister_on_close(
+        window: &ApplicationWindow,
+        discovery: &Rc<RefCell<Option<Arc<ServiceDiscovery>>>>,
+        runtime: &Arc<Runtime>,
+    ) {
+        let discovery = Rc::clone(discovery);
+        let runtime = Arc::clone(runtime);
+        window.connect_close_request(move |_| {
+            if let Some(discovery) = discovery.borrow_mut().take() {
+                runtime.block_on(async {
+                    let _ = discovery.stop_advertising().await;
+                });
+            }
+            glib::Propagation::Proceed
+        });
     }
 }

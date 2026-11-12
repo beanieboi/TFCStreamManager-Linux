@@ -126,8 +126,10 @@ impl MainWindow {
             Rc::new(RefCell::new(HashMap::new()));
         let selected_tournament: Rc<RefCell<Option<Tournament>>> = Rc::new(RefCell::new(None));
         let web_server: Rc<RefCell<Option<WebServer>>> = Rc::new(RefCell::new(None));
-        let service_discovery: Rc<RefCell<Option<Arc<ServiceDiscovery>>>> =
-            Rc::new(RefCell::new(None));
+        let service_discovery: Rc<RefCell<Option<Arc<ServiceDiscovery>>>> = Rc::new(RefCell::new(
+            Self::start_discovery(&settings, &log_callback, &runtime),
+        ));
+        Self::connect_unregister_on_close(&window, &service_discovery, &runtime);
 
         let main_box = GtkBox::new(Orientation::Vertical, 8);
         main_box.set_margin_top(12);

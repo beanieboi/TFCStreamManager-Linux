@@ -15,7 +15,7 @@ pub fn log(log: &LogCallback, sender: &str, msg: impl Into<String>) {
 
 pub use api::{ApiError, KickertoolApiService};
 pub use overlay_state::{OverlayMode, OverlayStateManager};
-pub use service_discovery::ServiceDiscovery;
+pub use service_discovery::{ServerState, ServiceDiscovery};
 pub use settings::{Settings, SettingsService};
 pub use table_monitor::TableMonitor;
 pub use web_server::WebServer;
