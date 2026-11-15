@@ -34,6 +34,15 @@ fn main() -> glib::ExitCode {
     // Create the GTK application
     let app = Application::builder().application_id(APP_ID).build();
 
+    // GTK's built-in theme everywhere: macOS has no system theme and gets it
+    // anyway; desktop themes like KDE's Breeze break linked toggle buttons,
+    // button padding and placeholder text.
+    app.connect_startup(|_| {
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_theme_name(Some("Default"));
+        }
+    });
+
     let rt_clone = Arc::clone(&rt);
     app.connect_activate(move |app| {
         // Enter the runtime context
