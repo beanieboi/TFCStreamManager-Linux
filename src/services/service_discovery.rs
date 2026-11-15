@@ -7,11 +7,12 @@ use std::thread;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-use super::{LogCallback, log};
-
 const SERVICE_TYPE: &str = "_http._tcp.local.";
 const INSTANCE_NAME: &str = "TFCStreamServer";
 /// TXT key the tablet reads to tell a started app from a running server.
+/// Host name the server answers for. Must not be the machine name.
+const HOST_NAME: &str = "tfc-stream-server.local.";
+
 pub const TXT_STATE_KEY: &str = "state";
 
 /// What the tablet sees: the app is open (`started`), or the web server is
@@ -49,44 +50,26 @@ fn usable_ips() -> Vec<IpAddr> {
 pub struct ServiceDiscovery {
     daemon: ServiceDaemon,
     service_fullname: Arc<RwLock<Option<String>>>,
-    log_callback: LogCallback,
 }
 
 impl ServiceDiscovery {
-    pub fn new(log_callback: LogCallback) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let daemon = ServiceDaemon::new()?;
         if let Ok(receiver) = daemon.monitor() {
-            let log_callback = Arc::clone(&log_callback);
             thread::spawn(move || {
                 while let Ok(event) = receiver.recv() {
                     match event {
                         DaemonEvent::Announce(service, instance) => {
-                            log(
-                                &log_callback,
-                                "ServiceDiscovery",
-                                format!("mDNS announce: {} ({})", instance, service),
-                            );
+                            tracing::debug!("mDNS announce: {} ({})", instance, service);
                         }
                         DaemonEvent::Error(err) => {
-                            log(
-                                &log_callback,
-                                "ServiceDiscovery",
-                                format!("mDNS error: {}", err),
-                            );
+                            tracing::warn!("mDNS error: {}", err);
                         }
                         DaemonEvent::IpAdd(ip) => {
-                            log(
-                                &log_callback,
-                                "ServiceDiscovery",
-                                format!("mDNS IP add: {}", ip),
-                            );
+                            tracing::debug!("mDNS IP add: {}", ip);
                         }
                         DaemonEvent::IpDel(ip) => {
-                            log(
-                                &log_callback,
-                                "ServiceDiscovery",
-                                format!("mDNS IP del: {}", ip),
-                            );
+                            tracing::debug!("mDNS IP del: {}", ip);
                         }
                         _ => {}
                     }
@@ -96,7 +79,6 @@ impl ServiceDiscovery {
         Ok(Self {
             daemon,
             service_fullname: Arc::new(RwLock::new(None)),
-            log_callback,
         })
     }
 
@@ -104,27 +86,21 @@ impl ServiceDiscovery {
     /// replaces a registration with the same fullname, so no unregister is
     /// needed between states.
     pub async fn advertise(&self, port: u16, state: ServerState) -> Result<()> {
-        let mut hostname = hostname::get()
-            .map(|h| h.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "localhost".to_owned());
-        if !hostname.ends_with(".local.") {
-            hostname = format!("{}.local.", hostname.trim_end_matches('.'));
-        }
+        // mdns-sd answers for this host name itself. Using the machine's own
+        // name collides with avahi / mDNSResponder, which then rename the
+        // machine (maple.local -> maple-2.local). Clients use the addresses.
+        let hostname = HOST_NAME;
 
         let ips = usable_ips();
         if ips.is_empty() {
-            log(
-                &self.log_callback,
-                "ServiceDiscovery",
-                "mDNS: No usable IPs found for service",
-            );
+            tracing::warn!("mDNS: No usable IPs found for service");
         }
 
         let properties = [(TXT_STATE_KEY, state.as_str())];
         let service_info = ServiceInfo::new(
             SERVICE_TYPE,
             INSTANCE_NAME,
-            &hostname,
+            hostname,
             ips.as_slice(),
             port,
             &properties[..],
@@ -135,16 +111,12 @@ impl ServiceDiscovery {
         self.daemon.register(service_info)?;
         *self.service_fullname.write().await = Some(fullname.clone());
 
-        log(
-            &self.log_callback,
-            "ServiceDiscovery",
-            format!(
-                "mDNS: advertising {} on {}:{} as {}",
-                fullname,
-                hostname,
-                port,
-                state.as_str()
-            ),
+        tracing::info!(
+            "mDNS: advertising {} on {}:{} as {}",
+            fullname,
+            hostname,
+            port,
+            state.as_str()
         );
         Ok(())
     }
@@ -156,11 +128,7 @@ impl ServiceDiscovery {
         if let Ok(receiver) = self.daemon.unregister(&fullname) {
             let _ = receiver.recv_timeout(Duration::from_secs(1));
         }
-        log(
-            &self.log_callback,
-            "ServiceDiscovery",
-            "mDNS: Stopped advertising",
-        );
+        tracing::info!("mDNS: Stopped advertising");
         Ok(())
     }
 }
