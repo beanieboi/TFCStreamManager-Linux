@@ -160,6 +160,59 @@ pub fn parse_modus(modus: &str) -> Result<Vec<UnitSpec>, ModusError> {
     Ok(units)
 }
 
+/// The games of a race, one per segment: doubles and singles numbered in
+/// order of appearance, e.g. D D E D E D D → D1 D2 E1 D3 E2 D4 D5. Both
+/// sides play the same game.
+pub fn race_units(kinds: &[SlotKind]) -> Vec<UnitSpec> {
+    let (mut doubles, mut singles) = (0u8, 0u8);
+    kinds
+        .iter()
+        .map(|kind| {
+            let number = match kind {
+                SlotKind::Doubles => {
+                    doubles += 1;
+                    doubles
+                }
+                SlotKind::Singles => {
+                    singles += 1;
+                    singles
+                }
+            };
+            let slot = Slot {
+                kind: *kind,
+                number,
+            };
+            UnitSpec {
+                home: slot,
+                away: slot,
+                flag: None,
+            }
+        })
+        .collect()
+}
+
+/// `D D E` for a sequence of kinds, e.g. as stored in the settings.
+pub fn kinds_from_letters(letters: &str) -> Vec<SlotKind> {
+    letters
+        .chars()
+        .filter_map(|c| match c.to_ascii_uppercase() {
+            'D' => Some(SlotKind::Doubles),
+            'E' => Some(SlotKind::Singles),
+            _ => None,
+        })
+        .collect()
+}
+
+pub fn kinds_to_letters(kinds: &[SlotKind]) -> String {
+    kinds
+        .iter()
+        .map(|k| match k {
+            SlotKind::Doubles => 'D',
+            SlotKind::Singles => 'E',
+        })
+        .collect()
+}
+
 /// Lengths of consecutive runs of units with the same slot pair.
 /// In a set-based format each run is one game.
 pub fn game_groups(units: &[UnitSpec]) -> Vec<std::ops::Range<usize>> {
@@ -179,6 +232,19 @@ pub fn game_groups(units: &[UnitSpec]) -> Vec<std::ops::Range<usize>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn race_games_are_numbered_in_order() {
+        let units = race_units(&kinds_from_letters("DDEDEDD"));
+        let names: Vec<_> = units.iter().map(|u| u.home.to_string()).collect();
+        assert_eq!(names, ["D1", "D2", "E1", "D3", "E2", "D4", "D5"]);
+        assert_eq!(
+            units,
+            parse_modus("D1D1,D2D2,E1E1,D3D3,E2E2,D4D4,D5D5").unwrap(),
+            "the MTFV Landesliga"
+        );
+        assert_eq!(kinds_to_letters(&kinds_from_letters("ddExD")), "DDED");
+    }
 
     #[test]
     fn parses_verbandsliga() {

@@ -1,21 +1,22 @@
 mod api;
-mod overlay_state;
+pub mod logging;
+mod match_api;
+pub(crate) mod match_store;
+mod overlay_feed;
+pub(crate) mod overlays;
 mod service_discovery;
 mod settings;
 mod table_monitor;
 mod web_server;
 
-use std::sync::Arc;
-
-pub type LogCallback = Arc<dyn Fn(String, String) + Send + Sync>;
-
-pub fn log(log: &LogCallback, sender: &str, msg: impl Into<String>) {
-    log(sender.to_string(), msg.into());
-}
-
 pub use api::{ApiError, KickertoolApiService};
-pub use overlay_state::{OverlayMode, OverlayStateManager};
+pub use match_api::MatchServices;
+pub use match_store::MatchStore;
+pub use overlay_feed::{OverlayFeed, overlay_key};
+pub use overlays::{
+    OverlayLibrary, Template as OverlayTemplate, TemplateFormat, select as select_overlay,
+};
 pub use service_discovery::{ServerState, ServiceDiscovery};
-pub use settings::{Settings, SettingsService};
-pub use table_monitor::TableMonitor;
+pub use settings::{CompetitionKind, FreiKind, Settings, SettingsService};
+pub use table_monitor::{TableMonitor, is_kickertool_tournament};
 pub use web_server::WebServer;

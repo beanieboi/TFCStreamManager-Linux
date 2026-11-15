@@ -1,23 +1,18 @@
 use futures_channel::oneshot;
 use gtk4::prelude::*;
-use gtk4::{
-    ApplicationWindow, Button, ButtonsType, DialogFlags, MessageDialog, MessageType, Stack,
-};
+use gtk4::{ApplicationWindow, Button, ButtonsType, DialogFlags, MessageDialog, MessageType};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use tokio::sync::RwLock;
 
-use super::{
-    HeaderControls, KickertoolControls, MainWindow, ManualControls, ModeButtons, ServerContext,
-};
+use super::{KickertoolControls, MainWindow, ServerContext};
+use crate::competition::Competition;
 use crate::models::{Table, Tournament};
 use crate::services::{
-    ApiError, KickertoolApiService, LogCallback, OverlayMode, OverlayStateManager, Settings,
-    SettingsService, TableMonitor, log,
+    ApiError, KickertoolApiService, MatchStore, TableMonitor, is_kickertool_tournament,
 };
 use crate::ui::{DebugLog, SettingsDialog};
 
@@ -45,115 +40,67 @@ impl MainWindow {
         });
     }
 
-    pub(super) fn connect_mode_buttons(
-        mode_buttons: &ModeButtons,
-        content_stack: &Stack,
-        refresh_button: &Button,
-        overlay_state: OverlayStateManager,
-        runtime: Arc<Runtime>,
-    ) {
-        let stack_clone = content_stack.clone();
-        let overlay_state_clone = overlay_state.clone();
-        let refresh_btn = refresh_button.clone();
-        let rt = Arc::clone(&runtime);
-        mode_buttons.kickertool.connect_toggled(move |btn| {
-            if btn.is_active() {
-                stack_clone.set_visible_child_name("kickertool");
-                Self::spawn_set_mode(&rt, overlay_state_clone.clone(), OverlayMode::Kickertool);
-                refresh_btn.emit_clicked();
-            }
-        });
-
-        let stack_clone = content_stack.clone();
-        let overlay_state_clone = overlay_state.clone();
-        let rt = Arc::clone(&runtime);
-        mode_buttons.remote.connect_toggled(move |btn| {
-            if btn.is_active() {
-                stack_clone.set_visible_child_name("remote");
-                let overlay = overlay_state_clone.clone();
-                rt.spawn(async move {
-                    overlay.set_mode(OverlayMode::Remote).await;
-                    overlay.set_content(Self::remote_default_content()).await;
-                });
-            }
-        });
-
-        let stack_clone = content_stack.clone();
-        let overlay_state_clone = overlay_state.clone();
-        let rt = Arc::clone(&runtime);
-        mode_buttons.manual.connect_toggled(move |btn| {
-            if btn.is_active() {
-                stack_clone.set_visible_child_name("manual");
-                Self::spawn_set_mode(&rt, overlay_state_clone.clone(), OverlayMode::Manual);
-            }
-        });
-    }
-
-    pub(super) fn connect_manual_update(
-        manual_controls: &ManualControls,
-        overlay_state: OverlayStateManager,
-        runtime: Arc<Runtime>,
-    ) {
-        let overlay_state_clone = overlay_state.clone();
-        let form = manual_controls.form.clone();
-        let rt = Arc::clone(&runtime);
-        manual_controls.update_button.connect_clicked(move |_| {
-            let values = Self::read_manual_entries(&form);
-
-            let overlay = overlay_state_clone.clone();
-            rt.spawn(async move {
-                overlay.set_content(Self::manual_content(values)).await;
-            });
-        });
-    }
-
+    /// Saves the settings and restarts the web server when the port changed.
     pub(super) fn connect_settings_dialog(
         settings_button: &Button,
         parent: &ApplicationWindow,
-        settings_service: Arc<SettingsService>,
-        settings: Arc<RwLock<Settings>>,
         api_service: Arc<KickertoolApiService>,
-        log_callback: LogCallback,
-        runtime: Arc<Runtime>,
+        context: Rc<ServerContext>,
     ) {
         let parent = parent.clone();
         settings_button.connect_clicked(move |_| {
-            let dialog = SettingsDialog::new(&parent, Arc::clone(&settings_service));
-            let settings_service = Arc::clone(&settings_service);
-            let settings_arc = Arc::clone(&settings);
+            let dialog = SettingsDialog::new(&parent, Arc::clone(&context.settings_service));
             let api = Arc::clone(&api_service);
-            let log_callback = Arc::clone(&log_callback);
-            let rt = Arc::clone(&runtime);
+            let context = Rc::clone(&context);
 
             dialog.run(move |result| {
-                if let Some((new_settings, api_key)) = result {
-                    if let Err(e) = settings_service.save(&new_settings) {
-                        log(
-                            &log_callback,
-                            "Settings",
-                            format!("Failed to save settings: {}", e),
-                        );
-                    }
-                    if let Err(e) = settings_service.save_api_key(&api_key) {
-                        log(
-                            &log_callback,
-                            "Settings",
-                            format!("Failed to save API key: {}", e),
-                        );
-                    } else {
-                        log(&log_callback, "Settings", "API key saved successfully");
-                    }
+                let Some((mut new_settings, api_key)) = result else {
+                    return;
+                };
+                if let Err(e) = context.settings_service.save_api_key(&api_key) {
+                    tracing::error!("Failed to save API key: {}", e);
+                } else {
+                    tracing::info!("API key saved successfully");
+                }
 
-                    let settings_arc = Arc::clone(&settings_arc);
-                    let api = Arc::clone(&api);
-                    rt.spawn(async move {
-                        let mut s = settings_arc.write().await;
-                        *s = new_settings;
-                        api.update_api_key(api_key).await;
-                    });
+                let (port_changed, settings) = context.runtime.block_on(async {
+                    let mut settings = context.settings.write().await;
+                    let changed = settings.port != new_settings.port;
+                    // Chosen in the toolbar, not in the dialog.
+                    new_settings.overlay_choices = settings.overlay_choices.clone();
+                    *settings = new_settings;
+                    api.update_api_key(api_key).await;
+                    (changed, settings.clone())
+                });
+                Self::save_settings(&context);
+                // Possibly another overlay folder; open pages reload with
+                // its files.
+                context.settings_service.use_overlay_dir(&settings);
+                Self::show_overlays(&context);
+                if port_changed {
+                    Self::restart_server(&context);
                 }
             });
         });
+    }
+
+    /// Opens the overlay of the running server in the default browser.
+    pub(super) fn connect_overlay_button(
+        overlay_button: &Button,
+        parent: &ApplicationWindow,
+        context: Rc<ServerContext>,
+    ) {
+        let parent = parent.clone();
+        overlay_button.connect_clicked(move |_| {
+            let port = context
+                .runtime
+                .block_on(async { context.settings.read().await.port });
+            gtk4::show_uri(Some(&parent), &Self::overlay_url(port), 0);
+        });
+    }
+
+    pub(super) fn connect_retry_button(retry_button: &Button, context: Rc<ServerContext>) {
+        retry_button.connect_clicked(move |_| Self::restart_server(&context));
     }
 
     pub(super) fn connect_debug_button(
@@ -167,40 +114,13 @@ impl MainWindow {
         });
     }
 
-    pub(super) fn connect_server_buttons(header: &HeaderControls, context: ServerContext) {
-        let stop_btn_clone = header.stop_button.clone();
-        let start_btn_clone2 = header.start_button.clone();
-        let url_label_clone = header.server_url_label.clone();
-        let context = Rc::new(context);
-        let context_for_start = Rc::clone(&context);
-        header.start_button.connect_clicked(move |_| {
-            let start_btn = start_btn_clone2.clone();
-            let stop_btn = stop_btn_clone.clone();
-            let url_label = url_label_clone.clone();
-            let context = Rc::clone(&context_for_start);
-            Self::start_server(context, start_btn, stop_btn, url_label);
-        });
-
-        let start_btn_clone = header.start_button.clone();
-        let url_label_clone = header.server_url_label.clone();
-        let context_for_stop = Rc::clone(&context);
-        header.stop_button.connect_clicked(move |btn| {
-            let context = Rc::clone(&context_for_stop);
-            Self::stop_server(context);
-
-            start_btn_clone.set_sensitive(true);
-            btn.set_sensitive(false);
-            url_label_clone.set_text("Not running");
-        });
-    }
-
     fn show_kickertool_access_dialog(parent: &ApplicationWindow, message: &str) {
         let dialog = MessageDialog::new(
             Some(parent),
             DialogFlags::MODAL,
             MessageType::Error,
             ButtonsType::Ok,
-            "Kickertool API access problem",
+            "Problem beim Zugriff auf die Kickertool-API",
         );
         dialog.format_secondary_text(Some(message));
         dialog.connect_response(|dialog, _| {
@@ -215,14 +135,12 @@ impl MainWindow {
         api_service: Arc<KickertoolApiService>,
         tournaments: Rc<RefCell<Vec<Tournament>>>,
         tournament_tables: Rc<RefCell<HashMap<String, Vec<Table>>>>,
-        log_callback: LogCallback,
         runtime: Arc<Runtime>,
     ) {
         let api_service_clone = Arc::clone(&api_service);
         let tournaments_clone = Rc::clone(&tournaments);
         let tournament_tables_clone = Rc::clone(&tournament_tables);
         let tournament_combo_clone = kickertool.tournament_combo.clone();
-        let log_callback_clone = Arc::clone(&log_callback);
         let parent = parent.clone();
         let rt = Arc::clone(&runtime);
         kickertool.refresh_button.connect_clicked(move |_| {
@@ -230,26 +148,21 @@ impl MainWindow {
             let tournaments = Rc::clone(&tournaments_clone);
             let tables = Rc::clone(&tournament_tables_clone);
             let combo = tournament_combo_clone.clone();
-            let log_callback = Arc::clone(&log_callback_clone);
             let parent = parent.clone();
 
             combo.remove_all();
-            log(&log_callback, "Kickertool", "Loading tournaments...");
+            tracing::debug!("Loading tournaments...");
 
             Self::run_async_into_ui(
                 &rt,
                 async move { api.load_tournaments_with_tables().await },
                 move |result| match result {
                     Ok((all_tournaments, all_tables)) => {
-                        log(
-                            &log_callback,
-                            "Kickertool",
-                            format!("Loaded {} tournaments", all_tournaments.len()),
-                        );
+                        tracing::info!("Loaded {} tournaments", all_tournaments.len());
                         if all_tournaments.is_empty() {
                             Self::show_kickertool_access_dialog(
                                 &parent,
-                                "No tournaments were returned for this API key. Check that the key is valid and has access to the expected tournaments.",
+                                "Für diesen API-Schlüssel wurden keine Turniere gefunden. Prüfe, ob der Schlüssel gültig ist und Zugriff auf die Turniere hat.",
                             );
                         }
                         for tournament in &all_tournaments {
@@ -259,21 +172,17 @@ impl MainWindow {
                         *tables.borrow_mut() = all_tables;
                     }
                     Err(e) => {
-                        log(
-                            &log_callback,
-                            "Kickertool",
-                            format!("Failed to load tournaments: {}", e),
-                        );
+                        tracing::error!("Failed to load tournaments: {}", e);
                         if let Some(api_error) = e.downcast_ref::<ApiError>() {
                             let message = match api_error {
                                 ApiError::Unauthorized => {
-                                    "The Kickertool API key is invalid or expired. Create a new key in Kickertool and save it in Settings."
+                                    "Der Kickertool-API-Schlüssel ist ungültig oder abgelaufen. Erstelle in Kickertool einen neuen Schlüssel und speichere ihn in den Einstellungen."
                                 }
                                 ApiError::Forbidden => {
-                                    "The Kickertool API key does not have access to tournament data for this account."
+                                    "Der Kickertool-API-Schlüssel hat keinen Zugriff auf die Turnierdaten dieses Kontos."
                                 }
                                 ApiError::RequestFailed { .. } => {
-                                    "Kickertool rejected the API request. Check the Debug log for the HTTP status and response."
+                                    "Kickertool hat die API-Anfrage abgelehnt. HTTP-Status und Antwort stehen im Debug-Log."
                                 }
                             };
                             Self::show_kickertool_access_dialog(&parent, message);
@@ -289,6 +198,8 @@ impl MainWindow {
         tournaments: Rc<RefCell<Vec<Tournament>>>,
         tournament_tables: Rc<RefCell<HashMap<String, Vec<Table>>>>,
         selected_tournament: Rc<RefCell<Option<Tournament>>>,
+        store: MatchStore,
+        runtime: Arc<Runtime>,
     ) {
         let tournament_tables_clone = Rc::clone(&tournament_tables);
         let tournaments_clone = Rc::clone(&tournaments);
@@ -299,6 +210,16 @@ impl MainWindow {
 
             if let Some(id) = combo.active_id() {
                 let id_str = id.to_string();
+
+                // A Kickertool match from another tournament leaves the table.
+                // Refreshing the list (no tournament chosen) keeps it.
+                let foreign = runtime.block_on(store.current()).is_some_and(|m| {
+                    matches!(m.competition, Competition::Kickertool { .. })
+                        && !is_kickertool_tournament(&m.competition, &id_str)
+                });
+                if foreign {
+                    runtime.block_on(store.replace(None));
+                }
 
                 let tournaments = tournaments_clone.borrow();
                 if let Some(tournament) = tournaments.iter().find(|t| t.id == id_str) {
