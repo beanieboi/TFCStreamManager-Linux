@@ -49,7 +49,7 @@
   }
   .row + .row { border-top: 1px solid rgba(99, 177, 220, 0.35); }
   .team { font-size: 26px; font-weight: 700; }
-  .players { font-size: 17px; color: var(--tfc-light); margin-top: 2px; }
+  .players { font-size: 22px; color: var(--tfc-light); margin-top: 2px; }
   .sets { font-size: 22px; opacity: 0.8; min-width: 28px; text-align: center; }
   .score {
     font-size: 40px; font-weight: 700; min-width: 64px; text-align: center;
@@ -60,22 +60,21 @@
 
   /* Hide what has nothing to show. */
   body.tfc-idle .board,
-  .race.tfc-empty, .segment.tfc-empty,
-  .players > .tfc-empty, .sets.tfc-empty { display: none; }
+  .game > .tfc-empty, .players.tfc-empty, .sets.tfc-empty { display: none; }
   /* " · " between the parts that are shown */
-  .players > span:not(.tfc-empty) ~ span:not(.tfc-empty)::before { content: " · "; }
+  .game > span:not(.tfc-empty) ~ span:not(.tfc-empty)::before { content: " · "; }
 </style>
 </head>
 <body>
 <div class="board">
   <div class="title">
     <span>{{tournamentName}}</span>
-    <span class="race">Race to {{raceTarget}}<span class="segment"> · Segment {{segmentNumber}}/{{segmentCount}}</span></span>
+    <span class="game"><span>Race to {{raceTarget}}</span><span>{{slotA}}</span><span>Segment {{segmentNumber}}/{{segmentCount}}</span></span>
   </div>
   <div class="row">
     <div>
       <div class="team">{{teamA}}</div>
-      <div class="players"><span>{{slotA}}</span><span>{{teamAPlayer}}</span></div>
+      <div class="players">{{teamAPlayer}}</div>
     </div>
     <div class="sets">{{setsA}}</div>
     <div class="score">{{scoreA}}</div>
@@ -83,7 +82,7 @@
   <div class="row">
     <div>
       <div class="team">{{teamB}}</div>
-      <div class="players"><span>{{slotB}}</span><span>{{teamBPlayer}}</span></div>
+      <div class="players">{{teamBPlayer}}</div>
     </div>
     <div class="sets">{{setsB}}</div>
     <div class="score">{{scoreB}}</div>
