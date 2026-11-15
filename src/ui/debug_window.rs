@@ -53,16 +53,16 @@ const CSS: &str = "
 .log-window .mono { font-family: monospace; }
 .log-window .dim { color: #7d8f9b; }
 .log-window .badge { border-radius: 4px; padding: 0 6px; font-weight: bold; font-family: monospace; }
-.log-window .badge.error { background-color: #5c1f24; color: #ffb4ad; }
-.log-window .badge.warn  { background-color: #5a4614; color: #f2cc60; }
-.log-window .badge.info  { background-color: #163f5c; color: #8fd0f5; }
-.log-window .badge.debug { background-color: #22313b; color: #8a9aa6; }
-.log-window .badge.trace { background-color: #1a252d; color: #6b7a85; }
-.log-window .message.error { color: #ff8f86; }
-.log-window .message.warn  { color: #f2cc60; }
-.log-window .message.info  { color: #d7e3ea; }
-.log-window .message.debug { color: #9aabb6; }
-.log-window .message.trace { color: #6b7a85; }
+.log-window .badge.lvl-error { background-color: #5c1f24; color: #ffb4ad; }
+.log-window .badge.lvl-warn  { background-color: #5a4614; color: #f2cc60; }
+.log-window .badge.lvl-info  { background-color: #163f5c; color: #8fd0f5; }
+.log-window .badge.lvl-debug { background-color: #22313b; color: #8a9aa6; }
+.log-window .badge.lvl-trace { background-color: #1a252d; color: #6b7a85; }
+.log-window .message.lvl-error { color: #ff8f86; }
+.log-window .message.lvl-warn  { color: #f2cc60; }
+.log-window .message.lvl-info  { color: #d7e3ea; }
+.log-window .message.lvl-debug { color: #9aabb6; }
+.log-window .message.lvl-trace { color: #6b7a85; }
 .log-window .log-row.launch {
     border-top: 1px solid #3a5568; margin-top: 14px; padding-top: 6px; padding-bottom: 4px;
 }
@@ -251,11 +251,11 @@ impl DebugWindow {
 
 fn css_class(level: Level) -> &'static str {
     match level {
-        Level::Trace => "trace",
-        Level::Debug => "debug",
-        Level::Info => "info",
-        Level::Warn => "warn",
-        Level::Error => "error",
+        Level::Trace => "lvl-trace",
+        Level::Debug => "lvl-debug",
+        Level::Info => "lvl-info",
+        Level::Warn => "lvl-warn",
+        Level::Error => "lvl-error",
     }
 }
 
