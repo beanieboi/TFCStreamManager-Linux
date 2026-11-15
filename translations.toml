@@ -1,0 +1,36 @@
+# Overlay names for what Kickertool (tournament.io) and MTFV send.
+#
+# This file is built into the app. To change single entries, put a
+# translations.toml with just those entries into the config directory
+# (~/.config/TFCStreamManager/). It is read when a table is selected.
+#
+# Keys are matched exactly first. A key with {n} matches any number, which
+# the text can use as {n}. Names without an entry are shown as sent.
+
+[rounds]
+# Elimination: FINALS-1-<n> is the round with n matches.
+"FINALS-1-1" = "Finale"
+"FINALS-1-2" = "Halbfinale"
+"FINALS-1-4" = "Viertelfinale"
+"FINALS-1-8" = "Achtelfinale"
+"FINALS-1-16" = "Sechzehntelfinale"
+"FINALS-1-{n}" = "1/{n}-Finale"
+"THIRD_PLACE" = "Spiel um Platz 3"
+
+# Double elimination
+"BASE_ROUND" = "Erste Runde"
+"WINNER_BRACKET-{n}" = "Gewinnerrunde {n}"
+"LOSER_BRACKET-{n}" = "Verliererrunde {n}"
+
+# Swiss
+"Round {n}" = "Runde {n}"
+
+[groups]
+"Qualification" = "Vorrunde"
+
+[disciplines]
+# Shown instead of Kickertool's default "[D1] Discipline 1" / "[D1] Disziplin 1",
+# by the number of players per team. Also names the games of an MTFV
+# Begegnung with their number: D1 is "Doppel 1", E2 "Einzel 2".
+doubles = "Doppel"
+singles = "Einzel"

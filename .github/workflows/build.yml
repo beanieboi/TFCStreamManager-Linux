@@ -23,12 +23,10 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
-      - name: Package binary with overlay templates
+      - name: Package binary
         run: |
           mkdir -p dist
           cp target/release/tfc_stream_manager dist/
-          cp player_overlay.html dist/
-          cp player_overlay_team.html dist/
           cd dist && tar czf ../tfc_stream_manager-linux-x86_64.tar.gz *
 
       - name: Create release

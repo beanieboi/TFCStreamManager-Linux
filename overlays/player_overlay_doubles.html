@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  Tournament overlay for doubles (Kickertool, Frei), in the layout of
+  mtfv_race_42.html. Shows both players of a side on two lines, not the
+  team; the team name only stands in while no player is known.
+  For singles see player_overlay.html.
+  The server adds /overlay.js, which fills the {{placeholders}} live and sets
+  tfc-empty, tfc-changed and tfc-idle (ADR 0011). Add it to OBS as a URL:
+  http://<server>:8080/overlay/player_overlay_doubles, width 1920, height 1080.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="tfc:name" content="Turnier Doppel">
+<meta name="tfc:sources" content="kickertool manual">
+<meta name="tfc:format" content="sets">
+<meta name="tfc:players" content="doubles">
+<title>Turnier Doppel</title>
+<style>
+  /* TFC Leipzig club blues */
+  :root {
+    color-scheme: dark;
+    --tfc-dark: #204f6c;
+    --tfc-mid: #469cd2;
+    --tfc-light: #63b1dc;
+    --tfc-gradient: linear-gradient(45deg, var(--tfc-dark), var(--tfc-mid));
+  }
+  html, body { margin: 0; background: transparent; }
+  body {
+    font-family: Helvetica, Arial, sans-serif;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  .board {
+    position: absolute; left: 40px; top: 40px;
+    min-width: 456px;
+    background: rgba(32, 79, 108, 0.92);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  }
+  .title {
+    display: flex; justify-content: space-between; align-items: center; gap: 24px;
+    padding: 8px 16px;
+    background: var(--tfc-gradient);
+    font-size: 18px; letter-spacing: 0.02em;
+  }
+  .row {
+    display: grid; grid-template-columns: 1fr auto auto;
+    align-items: center; gap: 16px;
+    padding: 10px 16px;
+  }
+  .row + .row { border-top: 1px solid rgba(99, 177, 220, 0.35); }
+  .players { display: flex; flex-direction: column; gap: 2px; }
+  .players > div { font-size: 22px; font-weight: 700; line-height: 1.15; }
+  .sets { font-size: 22px; opacity: 0.8; min-width: 28px; text-align: center; }
+  .score {
+    font-size: 44px; font-weight: 700; min-width: 64px; text-align: center;
+    font-variant-numeric: tabular-nums;
+    transition: transform 150ms ease-out, color 150ms;
+  }
+  .score.tfc-changed { transform: scale(1.25); color: var(--tfc-light); }
+  .footer {
+    padding: 6px 16px; font-size: 15px;
+    background: var(--tfc-gradient);
+  }
+
+  /* The team name only while there is no player. */
+  .players > .player:not(.tfc-empty) ~ .team { display: none; }
+
+  /* Hide what has nothing to show. */
+  body.tfc-idle .board,
+  .board.tfc-empty,
+  .title.tfc-empty, .title > .tfc-empty,
+  .players > .tfc-empty, .sets.tfc-empty, .score.tfc-empty,
+  .footer.tfc-empty, .footer > .tfc-empty { display: none; }
+  /* " · " between the footer parts that are shown */
+  .footer > span:not(.tfc-empty) ~ span:not(.tfc-empty)::before { content: " · "; }
+</style>
+</head>
+<body>
+<div class="board">
+  <div class="title"><span>{{tournamentName}}</span><span>{{roundName}}</span></div>
+  <div class="row">
+    <div class="players">
+      <div class="player">{{teamAPlayer1}}</div>
+      <div class="player">{{teamAPlayer2}}</div>
+      <div class="team">{{teamA}}</div>
+    </div>
+    <div class="sets">{{setsA}}</div>
+    <div class="score">{{scoreA}}</div>
+  </div>
+  <div class="row">
+    <div class="players">
+      <div class="player">{{teamBPlayer1}}</div>
+      <div class="player">{{teamBPlayer2}}</div>
+      <div class="team">{{teamB}}</div>
+    </div>
+    <div class="sets">{{setsB}}</div>
+    <div class="score">{{scoreB}}</div>
+  </div>
+  <div class="footer"><span>{{disciplineName}}</span><span>{{groupName}}</span></div>
+</div>
+</body>
+</html>
