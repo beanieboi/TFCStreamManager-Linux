@@ -7,6 +7,7 @@ pub(crate) mod overlays;
 mod service_discovery;
 mod settings;
 mod table_monitor;
+pub(crate) mod trackers;
 mod web_server;
 
 pub use api::{ApiError, KickertoolApiService};
@@ -19,4 +20,5 @@ pub use overlays::{
 pub use service_discovery::{ServerState, ServiceDiscovery};
 pub use settings::{CompetitionKind, FreiKind, Settings, SettingsService};
 pub use table_monitor::{TableMonitor, is_kickertool_tournament};
+pub use trackers::{TrackerStatus, Trackers};
 pub use web_server::WebServer;

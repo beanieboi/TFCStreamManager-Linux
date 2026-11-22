@@ -71,6 +71,7 @@ fn main() -> glib::ExitCode {
             settings: Arc::clone(&settings),
             store,
             mtfv: Arc::new(MtfvClient::new().expect("Failed to initialize mtfv.de client")),
+            trackers: Default::default(),
         };
 
         // Create and setup main window

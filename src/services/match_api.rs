@@ -6,6 +6,7 @@
 //! `PUT /lineups`, `PUT /setup` (labels, team names), `PUT /format`.
 //! Starting a match: `POST /match` (an MTFV Begegnung or a Frei match),
 //! `DELETE /match`, `GET /mtfv/fixtures`.
+//! Tracker phone health: `POST /trackers`, `GET /trackers` (see `trackers`).
 
 use axum::{
     Json, Router,
@@ -25,8 +26,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::{RwLock, watch};
 
-use super::Settings;
 use super::match_store::{MatchStore, StoreError};
+use super::{Settings, Trackers};
 use crate::competition::{
     CommandError, Competition, Event, Labels, MatchFormat, Side, Slot, TableMatch, Team,
 };
@@ -39,6 +40,9 @@ pub struct MatchServices {
     pub mtfv: Arc<MtfvClient>,
     /// For the MTFV race target.
     pub settings: Arc<RwLock<Settings>>,
+    /// Health of the tracker phones. Here because the phones use this API;
+    /// their reports never touch the match.
+    pub trackers: Trackers,
 }
 
 struct ApiState {
@@ -69,6 +73,7 @@ pub fn router(services: MatchServices, shutdown: watch::Receiver<bool>) -> Route
             settings: services.settings,
             shutdown,
         }))
+        .merge(super::trackers::router(services.trackers))
 }
 
 fn error(status: StatusCode, message: impl ToString) -> Response {
@@ -326,6 +331,7 @@ mod tests {
                     store: store.clone(),
                     mtfv,
                     settings: Default::default(),
+                    trackers: Default::default(),
                 },
                 rx,
             ),

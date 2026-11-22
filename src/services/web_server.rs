@@ -378,6 +378,7 @@ mod tests {
             store: overlay.store().clone(),
             mtfv: Arc::new(MtfvClient::with_base_url("http://127.0.0.1:9").unwrap()),
             settings: Default::default(),
+            trackers: Default::default(),
         };
         let state = Arc::new(AppState {
             overlay,
@@ -547,6 +548,30 @@ mod tests {
         .await
         .unwrap()
         .status()
+    }
+
+    #[tokio::test]
+    async fn tracker_reports_are_served_under_api_and_leave_the_match_alone() {
+        let overlay = overlay_manager();
+        let app = test_app(overlay.clone(), Settings::default());
+        let status = app
+            .clone()
+            .oneshot(
+                Request::post("/api/trackers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"id":"a","name":"Pixel","reading":{"goals":3}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status();
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, body) = get_page(app, "/api/trackers").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.contains(r#""name":"Pixel""#), "{body}");
+        assert!(overlay.store().current().await.is_none());
     }
 
     #[tokio::test]

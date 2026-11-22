@@ -3,6 +3,7 @@ mod competition;
 mod overlay_picker;
 mod panels;
 mod score_panel;
+mod trackers;
 mod wiring;
 
 use gtk4::prelude::*;
@@ -214,12 +215,15 @@ impl MainWindow {
         let (header_box, header) = Self::build_header(&competition_box);
         let (content_stack, kickertool, mtfv, frei) = Self::build_content_stack();
         let (score_box, score) = Self::build_score_panel();
+        let (tracker_box, tracker_panel) = Self::build_tracker_panel();
 
         main_box.append(&header_box);
         main_box.append(&Separator::new(Orientation::Horizontal));
         main_box.append(&content_stack);
         main_box.append(&Separator::new(Orientation::Horizontal));
         main_box.append(&score_box);
+        main_box.append(&Separator::new(Orientation::Horizontal));
+        main_box.append(&tracker_box);
         window.set_child(Some(&main_box));
 
         let context = Rc::new(ServerContext {
@@ -290,6 +294,7 @@ impl MainWindow {
             Rc::clone(&context),
         );
         Self::follow_match_on_the_table(Rc::clone(&context));
+        Self::follow_trackers(tracker_panel, context.match_services.trackers.clone());
         Self::show_overlays(&context);
         Self::restore_competition(&competition_buttons, &context);
 
