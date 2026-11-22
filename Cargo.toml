@@ -3,6 +3,7 @@ name = "tfc_stream_manager"
 version = "1.0.0"
 edition = "2024"
 authors = ["Ben Fritsch"]
+license = "MIT"
 description = "Linux desktop application for managing streaming overlays for table football tournaments"
 
 [dependencies]
