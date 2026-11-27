@@ -9,8 +9,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/beanieboi/TFCStreamManager-linux.git
-cd TFCStreamManager-linux
+git clone https://github.com/beanieboi/TFCStreamManager-Server.git
+cd TFCStreamManager-Server
 
 # Build release version
 cargo build --release
